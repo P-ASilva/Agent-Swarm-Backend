@@ -1,0 +1,9 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agent-swarm-backend-api
+    ports:
+      - "8000:8000"
+    restart: unless-stopped

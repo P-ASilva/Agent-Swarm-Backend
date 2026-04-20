@@ -1,0 +1,14 @@
+.git
+.github
+.cursor
+.venv
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+tests/
+README.md
+CHANGELOG.md
+challenge-context.md
