@@ -1,0 +1,3 @@
+# Local deterministic seed list for smoke tests.
+file:///app/tests/fixtures/rag/infinitepay_tap_to_pay.html
+file:///app/tests/fixtures/rag/infinitepay_boleto.html
