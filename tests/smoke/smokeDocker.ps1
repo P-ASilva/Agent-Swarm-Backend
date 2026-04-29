@@ -13,7 +13,7 @@ if ($health.status -ne "ok") {
 
 $payload = @{
     message = "How can I use my phone as a card machine?"
-    user_id = "client789"
+    userId = "client789"
 }
 
 $response = Invoke-RestMethod `
@@ -22,7 +22,7 @@ $response = Invoke-RestMethod `
     -ContentType "application/json" `
     -Body ($payload | ConvertTo-Json -Compress)
 
-if (-not $response.status -or -not $response.reply -or -not $response.trace_id) {
+if (-not $response.status -or -not $response.reply -or -not $response.traceId) {
     throw "Messages payload invalid: $($response | ConvertTo-Json -Compress)"
 }
 

@@ -1,28 +1,26 @@
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
 
 
-def _load_env() -> None:
-    project_root = Path(__file__).resolve().parents[2]
-    print(project_root)
-    load_dotenv(project_root / ".env", override=False)
+def loadEnv() -> None:
+    projectRoot = Path(__file__).resolve().parents[2]
+    load_dotenv(projectRoot / ".env", override=False)
 
 
 def main() -> int:
-    _load_env()
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
+    loadEnv()
+    apiKey = os.getenv("OPENAI_API_KEY")
+    if not apiKey:
         print("OPENAI_API_KEY is not set. Add it to your environment or .env file.")
         return 1
 
     headers = {
-        "Authorization": f"Bearer {api_key}",
+        "Authorization": f"Bearer {apiKey}",
         "Content-Type": "application/json",
     }
 
@@ -38,12 +36,12 @@ def main() -> int:
 
     if response.status_code == 200:
         payload = response.json()
-        model_count = len(payload.get("data", []))
-        print(f"Connection successful. Retrieved {model_count} models.")
+        modelCount = len(payload.get("data", []))
+        print(f"Connection successful. Retrieved {modelCount} models.")
         return 0
 
     if response.status_code in {401, 403}:
-        print("Authentication failed. Check OPEN_API_KEY permissions/value.")
+        print("Authentication failed. Check OPENAI_API_KEY permissions/value.")
         return 1
 
     print(f"Unexpected status code: {response.status_code}")

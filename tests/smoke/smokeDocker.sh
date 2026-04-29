@@ -17,7 +17,7 @@ PY
 
 messages_json="$(curl -fsS \
   -H "Content-Type: application/json" \
-  -d '{"message":"How can I use my phone as a card machine?","user_id":"client789"}' \
+  -d '{"message":"How can I use my phone as a card machine?","userId":"client789"}' \
   "$BASE_URL/messages")"
 
 python - <<'PY' "$messages_json"
@@ -25,7 +25,7 @@ import json
 import sys
 
 payload = json.loads(sys.argv[1])
-required = {"status", "reply", "trace_id"}
+required = {"status", "reply", "traceId"}
 assert required.issubset(payload), f"Invalid /messages payload: {payload}"
 PY
 
