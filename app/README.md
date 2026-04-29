@@ -60,3 +60,37 @@ Optional bash smoke script (targets a running API container):
 ```bash
 bash tests/smoke/smokeDocker.sh
 ```
+
+## RAG pipeline operations
+
+RAG storage uses Postgres + pgvector and runs separately from the HTTP API lifecycle.
+
+```powershell
+# Start pgvector database
+docker compose up -d postgres
+
+# Apply RAG schema migrations
+.\venv\Scripts\python -m app.rag_pipeline.cli migrate
+
+# Ingest from JSON base URL manifest
+.\venv\Scripts\python -m app.rag_pipeline.cli ingest --crawl-version 20260429
+
+# Reindex data when chunking/model/schema changes
+.\venv\Scripts\python -m app.rag_pipeline.cli reindex --crawl-version 20260429-r2
+
+# Ingest one URL directly (research-agent trigger flow)
+.\venv\Scripts\python -m app.rag_pipeline.cli add-url --url "https://www.infinitepay.io/pix" --crawl-version 20260429-r3
+
+# Retrieval verification query
+.\venv\Scripts\python -m app.rag_pipeline.cli query --query "tap to pay" --top-k 3 --pretty
+```
+
+RAG smoke scripts:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tests/smoke/smokeRagPipeline.ps1
+```
+
+```bash
+bash tests/smoke/smokeRagPipeline.sh
+```

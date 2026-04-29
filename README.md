@@ -53,6 +53,69 @@ After startup:
 - Health endpoint: `http://localhost:8000/health`
 - OpenAPI docs: `http://localhost:8000/docs`
 
+### RAG pipeline (Postgres + pgvector)
+
+This repository includes a standalone RAG ingestion pipeline that is intentionally separate from API startup.
+It stores chunked, versioned knowledge data in PostgreSQL with pgvector support.
+
+RAG storage service:
+
+```bash
+docker compose up -d postgres
+```
+
+Run migrations:
+
+```bash
+python -m app.rag_pipeline.cli migrate
+```
+
+Seed URL manifest lives at `app/rag_pipeline/seedUrls.json`.
+
+Run ingestion from the JSON base URLs:
+
+```bash
+python -m app.rag_pipeline.cli ingest --crawl-version 20260429
+```
+
+Rerun/reindex pipeline:
+
+```bash
+python -m app.rag_pipeline.cli reindex --crawl-version 20260429-r2
+```
+
+Ingest one specific URL (research-agent style):
+
+```bash
+python -m app.rag_pipeline.cli add-url --url "https://www.infinitepay.io/pix" --crawl-version 20260429-r3
+```
+
+Run a retrieval check:
+
+```bash
+python -m app.rag_pipeline.cli query --query "phone as a card machine" --top-k 3 --pretty
+```
+
+Optional one-off ingestion container:
+
+```bash
+docker compose --profile rag run --rm rag_ingest
+```
+
+### RAG smoke routines
+
+PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tests/smoke/smokeRagPipeline.ps1
+```
+
+Bash:
+
+```bash
+bash tests/smoke/smokeRagPipeline.sh
+```
+
 ## (Disclaimer)
 
 This is a preliminary plan, not indicative of current or future implementation formats.
