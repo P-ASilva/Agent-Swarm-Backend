@@ -30,7 +30,7 @@ The `RouterAgent` orchestrates specialized agents:
 - `SupportAgent` handles support/account flows through the shared agent adapter.
 
 Planned HTTP routes:
-- `POST /messages`: accepts `{ "message": "<text>", "user_id": "<id>" }` and returns a normalized JSON payload.
+- `POST /messages`: accepts `{ "message": "<text>", "userId": "<id>" }` and returns a normalized JSON payload.
 - `GET /health`: returns service health status for operational checks.
 
 ### Docker setup

@@ -1,3 +1,4 @@
+/refactor migrated API, domain, adapter, modeling, and test modules to camelCase naming (symbols/files), updated payload fields to `userId`/`traceId`, and aligned pytest discovery for camelCase test files.
 /feat implemented API route testing baseline with pytest foundation, route contracts, integration/failure-path suites, and README quality gates for local/CI execution.
 /feat implemented FastAPI route adapters for `POST /messages` and `GET /health` with composition-root wiring, normalized response envelope, dependency/timeout HTTP mapping, and OpenAPI-aligned documentation updates.
 /feat added Docker setup for containerized API execution, including image build configuration and runtime defaults for local development.

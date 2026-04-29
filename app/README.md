@@ -25,7 +25,7 @@ Invoke-RestMethod -Uri http://127.0.0.1:8000/health
 # Valid message payload
 Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/messages `
   -ContentType "application/json" `
-  -Body '{"message":"How can I use my phone as a card machine?","user_id":"client789"}'
+  -Body '{"message":"How can I use my phone as a card machine?","userId":"client789"}'
 
 # Invalid payload should return 422
 try {
@@ -43,7 +43,7 @@ From the repository root:
 
 ```powershell
 # API smoke checks (PowerShell script)
-powershell -ExecutionPolicy Bypass -File tests/smoke/smoke_api.ps1
+powershell -ExecutionPolicy Bypass -File tests/smoke/smokeApi.ps1
 
 # Route contracts
 .\.venv\Scripts\python -m pytest tests/routes -q
@@ -55,8 +55,8 @@ powershell -ExecutionPolicy Bypass -File tests/smoke/smoke_api.ps1
 .\.venv\Scripts\python -m pytest -q
 ```
 
-Optional bash smoke script:
+Optional bash smoke script (targets a running API container):
 
 ```bash
-bash tests/smoke/smoke_api.sh
+bash tests/smoke/smokeDocker.sh
 ```
