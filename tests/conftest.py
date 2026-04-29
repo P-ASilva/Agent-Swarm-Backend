@@ -7,14 +7,14 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 
-def _resolve_factory_candidates() -> list[str]:
-    env_candidate = os.getenv("TEST_APP_FACTORY", "").strip()
+def _resolveFactoryCandidates() -> list[str]:
+    envCandidate = os.getenv("TEST_APP_FACTORY", "").strip()
     candidates = [
-        env_candidate,
-        "app.main:create_app",
-        "src.app.main:create_app",
-        "api.main:create_app",
-        "main:create_app",
+        envCandidate,
+        "app.main:createApp",
+        "src.app.main:createApp",
+        "api.main:createApp",
+        "main:createApp",
         "app.main:app",
         "src.app.main:app",
         "api.main:app",
@@ -23,10 +23,10 @@ def _resolve_factory_candidates() -> list[str]:
     return [candidate for candidate in candidates if candidate]
 
 
-def _import_factory_or_app(factory_ref: str) -> Callable[[], FastAPI]:
-    module_name, attr_name = factory_ref.split(":", maxsplit=1)
-    module = importlib.import_module(module_name)
-    attr = getattr(module, attr_name)
+def _importFactoryOrApp(factoryRef: str) -> Callable[[], FastAPI]:
+    moduleName, attrName = factoryRef.split(":", maxsplit=1)
+    module = importlib.import_module(moduleName)
+    attr = getattr(module, attrName)
 
     if callable(attr):
         return attr
@@ -35,35 +35,35 @@ def _import_factory_or_app(factory_ref: str) -> Callable[[], FastAPI]:
         return lambda: attr
 
     raise TypeError(
-        f"Resolved '{factory_ref}' but attribute is neither callable nor FastAPI."
+        f"Resolved '{factoryRef}' but attribute is neither callable nor FastAPI."
     )
 
 
 @pytest.fixture(scope="session")
-def app_factory() -> Callable[[], FastAPI]:
+def appFactory() -> Callable[[], FastAPI]:
     failures: list[str] = []
-    for candidate in _resolve_factory_candidates():
+    for candidate in _resolveFactoryCandidates():
         try:
-            return _import_factory_or_app(candidate)
+            return _importFactoryOrApp(candidate)
         except Exception as exc:  # pragma: no cover - this is for test bootstrap diagnostics
             failures.append(f"{candidate}: {exc!r}")
 
-    failure_text = "\n".join(f"- {item}" for item in failures) if failures else "- none"
+    failureText = "\n".join(f"- {item}" for item in failures) if failures else "- none"
     pytest.fail(
         "Could not resolve FastAPI app factory.\n"
-        "Set TEST_APP_FACTORY to '<module>:<create_app_or_app>' or implement one of:\n"
-        "- app.main:create_app\n"
-        "- src.app.main:create_app\n"
-        "- api.main:create_app\n"
-        "- main:create_app\n"
+        "Set TEST_APP_FACTORY to '<module>:<createApp_or_app>' or implement one of:\n"
+        "- app.main:createApp\n"
+        "- src.app.main:createApp\n"
+        "- api.main:createApp\n"
+        "- main:createApp\n"
         "Tried candidates:\n"
-        f"{failure_text}"
+        f"{failureText}"
     )
 
 
 @pytest.fixture
-def app(app_factory: Callable[[], FastAPI]) -> FastAPI:
-    return app_factory()
+def app(appFactory: Callable[[], FastAPI]) -> FastAPI:
+    return appFactory()
 
 
 @pytest.fixture
@@ -72,20 +72,20 @@ def client(app: FastAPI) -> TestClient:
 
 
 @pytest.fixture
-def message_payload() -> dict[str, str]:
+def messagePayload() -> dict[str, str]:
     return {
         "message": "How can I use my phone as a card machine?",
-        "user_id": "client789",
+        "userId": "client789",
     }
 
 
 @pytest.fixture
-def dependency_overrider(app: FastAPI):
+def dependencyOverrider(app: FastAPI):
     applied: list[Any] = []
 
-    def _apply(original_dep: Callable[..., Any], override_dep: Callable[..., Any]) -> None:
-        app.dependency_overrides[original_dep] = override_dep
-        applied.append(original_dep)
+    def _apply(originalDep: Callable[..., Any], overrideDep: Callable[..., Any]) -> None:
+        app.dependency_overrides[originalDep] = overrideDep
+        applied.append(originalDep)
 
     yield _apply
 

@@ -6,5 +6,6 @@ build-backend = "setuptools.build_meta"
 minversion = "8.0"
 addopts = "-ra"
 testpaths = ["tests"]
+python_files = ["test*.py"]
 pythonpath = ["."]
 asyncio_mode = "auto"
