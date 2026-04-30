@@ -10,7 +10,8 @@ from app.adapters.inbound.http.schemas import (
     MessageRequest,
     MessageResponseEnvelope,
 )
-from app.domain.ports import MessageUseCasePort
+from app.domain.errors import PersistencyUnavailableError
+from app.domain.ports import InvalidGoogleTokenError, MessageUseCasePort
 
 
 apiRouter = APIRouter()
@@ -34,6 +35,7 @@ async def getHealth() -> HealthResponse:
     summary="Process a user message",
     response_description="Normalized message response envelope.",
     responses={
+        401: {"description": "Google identity token is invalid or expired."},
         422: {"description": "Request payload validation failed."},
         503: {"description": "A required downstream dependency is unavailable."},
         504: {"description": "A downstream dependency timed out."},
@@ -43,13 +45,27 @@ async def postMessages(
     payload: MessageRequest,
     useCase: MessageUseCasePort = Depends(getMessageUseCase),
 ) -> MessageResponseEnvelope:
-    payloadDict = {"message": payload.message, "userId": payload.userId}
+    payloadDict = {
+        "message": payload.message,
+        "userId": payload.userId,
+        "googleIdToken": payload.googleIdToken,
+    }
     try:
         rawResult: dict[str, Any] = await useCase.execute(payloadDict)
+    except InvalidGoogleTokenError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail="Google login token is invalid or expired.",
+        ) from exc
     except TimeoutError as exc:
         raise HTTPException(
             status_code=504,
             detail="Timed out while processing message dependencies.",
+        ) from exc
+    except PersistencyUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
         ) from exc
     except RuntimeError as exc:
         raise HTTPException(

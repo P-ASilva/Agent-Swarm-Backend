@@ -6,7 +6,9 @@ from app.adapters.inbound.http.routes import apiRouter
 from app.domain.ports import MessageUseCasePort
 
 
-def createApp(messageUseCase: MessageUseCasePort | None = None) -> FastAPI:
+def createApp(
+    messageUseCase: MessageUseCasePort | None = None,
+) -> FastAPI:
     app = FastAPI(
         title="Agent Swarm API",
         version="0.1.0",
@@ -15,5 +17,6 @@ def createApp(messageUseCase: MessageUseCasePort | None = None) -> FastAPI:
     app.state.messageUseCase = messageUseCase
     app.include_router(apiRouter)
     return app
+
 
 app = createApp()

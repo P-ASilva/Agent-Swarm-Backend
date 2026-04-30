@@ -9,6 +9,16 @@ class MessageRequest(BaseModel):
     )
     userId: str = Field(
         min_length=1,
-        description="Stable identifier for the user context.",
+        description=(
+            "Client-stable label used to bucket guest turns (guest:userId persistence key); "
+            "also forwarded as client_user_label in storage."
+        ),
         examples=["client789"],
+    )
+    googleIdToken: str | None = Field(
+        default=None,
+        description=(
+            "Optional Google ID token. When valid, same-day persisted history keyed to the Google "
+            "subject is loaded and turns are linked to app_users via upsert."
+        ),
     )
