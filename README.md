@@ -29,6 +29,14 @@ The `RouterAgent` orchestrates specialized agents:
 - `KnowledgeAgent` handles product/company queries using RAG and optional web search.
 - `SupportAgent` handles support/account flows through the shared agent adapter.
 
+KnowledgeAgent behavior now supports two modes through the same hexagonal pipeline:
+- **Knowledge answer mode**: retrieves grounded chunks from pgvector and answers with source-aware context.
+- **Context update mode**: accepts direct URL add requests (structured tool call or natural-language request) and ingests the URL into the RAG store.
+
+Knowledge answer generation now uses a dedicated model configuration independent from routing:
+- `ROUTER_MODEL`: decides which agent route handles the message.
+- `KNOWLEDGE_MODEL`: formats grounded knowledge answers from retrieved RAG chunks.
+
 Planned HTTP routes:
 - `POST /messages`: accepts `{ "message": "<text>", "userId": "<id>" }` and returns a normalized JSON payload.
 - `GET /health`: returns service health status for operational checks.
@@ -90,6 +98,12 @@ Ingest one specific URL (research-agent style):
 python -m app.rag_pipeline.cli add-url --url "https://www.infinitepay.io/pix" --crawl-version 20260429-r3
 ```
 
+Structured tool-call equivalent (future agent integration):
+
+```bash
+python -m app.rag_pipeline.cli add-url --url "https://example.com/new-context"
+```
+
 Run a retrieval check:
 
 ```bash
@@ -100,6 +114,22 @@ Optional one-off ingestion container:
 
 ```bash
 docker compose --profile rag run --rm rag_ingest
+```
+
+Compose-driven RAG command modes:
+
+```bash
+# 1) Database setup / bulk seed from app/rag_pipeline/seedUrls.json (default mode)
+docker compose --profile rag run --rm \
+  -e RAG_PIPELINE_COMMAND=ingest \
+  -e RAG_PIPELINE_ARGS="--crawl-version 20260429" \
+  rag_ingest
+
+# 2) Future research-agent trigger: ingest one URL directly
+docker compose --profile rag run --rm \
+  -e RAG_PIPELINE_COMMAND=add-url \
+  -e RAG_PIPELINE_ARGS="--url https://www.infinitepay.io/pix --crawl-version 20260429-rurl" \
+  rag_ingest
 ```
 
 ### RAG smoke routines
@@ -114,6 +144,16 @@ Bash:
 
 ```bash
 bash tests/smoke/smokeRagPipeline.sh
+```
+
+KnowledgeAgent smoke routines:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tests/smoke/smokeKnowledgeAgent.ps1
+```
+
+```bash
+bash tests/smoke/smokeKnowledgeAgent.sh
 ```
 
 ## (Disclaimer)

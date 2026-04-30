@@ -85,6 +85,14 @@ docker compose up -d postgres
 .\venv\Scripts\python -m app.rag_pipeline.cli query --query "tap to pay" --top-k 3 --pretty
 ```
 
+KnowledgeAgent supports both direct trigger styles:
+- structured JSON message action (e.g. `{"tool":"add_url_to_context","url":"https://..."}`),
+- natural-language request containing an URL and add-to-context intent.
+
+Model split configuration:
+- `ROUTER_MODEL` controls route selection.
+- `KNOWLEDGE_MODEL` controls grounded answer formatting for knowledge replies.
+
 RAG smoke scripts:
 
 ```powershell
@@ -93,4 +101,32 @@ powershell -ExecutionPolicy Bypass -File tests/smoke/smokeRagPipeline.ps1
 
 ```bash
 bash tests/smoke/smokeRagPipeline.sh
+```
+
+## Compose-triggered RAG modes
+
+Both scenarios run through the same `rag_ingest` service (no duplicated pipeline logic):
+
+```powershell
+# DB setup seed from app/rag_pipeline/seedUrls.json
+docker compose --profile rag run --rm `
+  -e RAG_PIPELINE_COMMAND=ingest `
+  -e RAG_PIPELINE_ARGS="--crawl-version 20260429" `
+  rag_ingest
+
+# Research-agent direct URL add
+docker compose --profile rag run --rm `
+  -e RAG_PIPELINE_COMMAND=add-url `
+  -e RAG_PIPELINE_ARGS="--url https://www.infinitepay.io/pix --crawl-version 20260429-rurl" `
+  rag_ingest
+```
+
+KnowledgeAgent smoke:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tests/smoke/smokeKnowledgeAgent.ps1
+```
+
+```bash
+bash tests/smoke/smokeKnowledgeAgent.sh
 ```

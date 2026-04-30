@@ -1,3 +1,15 @@
+/feat added dedicated knowledge-answer prompting with strict JSON format contract, injected RAG context, and independent `KNOWLEDGE_MODEL` configuration separate from `ROUTER_MODEL`.
+/fix fixed KnowledgeAgent retrieval misses caused by inconsistent `.env` loading between API and RAG CLI by loading dotenv inside `buildEmbeddingProviderFromEnv`, then reindexed seed URLs with `text-embedding-3-small`.
+/refactor reworked `playground-system` into a minimal bot test interface with neutral naming, removing legacy `backend/` and `frontend/` folders and keeping only the latest message/answer flow.
+/refactor simplified `playground-system` to a frontend-only React app, removing the Node proxy layer and calling FastAPI `POST /messages` directly.
+/docs updated playground usage to run from `playground-system` root (`npm install`, `npm run dev`) with built-in Vite proxy to `http://127.0.0.1:8000`.
+/feat added a standalone React playground system (`playground-system`) with its own Node API proxy so model responses can be live-tested outside FastAPI internals.
+/docs added playground run instructions, including backend/frontend startup commands and configurable model endpoint routing for manual response validation.
+/feat implemented a repository-pattern `KnowledgeAgent` with grounded retrieval replies and dual URL-ingestion triggers (structured tool call + natural-language intent) while preserving hexagonal boundaries.
+/feat extracted shared RAG orchestration into `RagIngestionService` so CLI and agent-triggered ingestion reuse a single pipeline without duplicated fetch/chunk/embed/store logic.
+/feat added outbound ingestion contract (`KnowledgeIngestionToolPort`) and postgres adapter wiring, enabling API knowledge flows to update RAG context through explicit URL requests.
+/test added KnowledgeAgent unit tests, knowledge-route integration assertions, DB-mutation integration coverage for agent-triggered URL ingestion, and dedicated KnowledgeAgent smoke scripts.
+/feat updated `rag_ingest` compose service to support command-driven execution (`RAG_PIPELINE_COMMAND` + `RAG_PIPELINE_ARGS`) so database seeding and future agent-triggered URL ingestion reuse the same pipeline path.
 /feat switched RAG seed source to `app/rag_pipeline/seedUrls.json`, added challenge URL manifest entries, and updated compose/env/docs defaults to use the JSON manifest instead of `challenge-context.md`.
 /feat added `add-url` RAG CLI mode so research-agent calls can ingest explicit URLs through the same ingestion pipeline without duplicating fetch/chunk/embed/store logic.
 /feat added a standalone RAG ingestion pipeline (`app.rag_pipeline`) with challenge-link sourcing, deterministic chunking, versioned pgvector upserts, migration runner, and retrieval query CLI commands.
