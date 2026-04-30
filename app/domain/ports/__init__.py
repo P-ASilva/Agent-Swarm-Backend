@@ -1,6 +1,7 @@
 from app.domain.ports.inbound import MessageUseCasePort
 from app.domain.ports.outbound import (
     AgentHandlerPort,
+    KnowledgeIngestionToolPort,
     KnowledgeRetrieverPort,
     OpenAiChatPort,
     RouterModelPort,
@@ -9,6 +10,7 @@ from app.domain.ports.outbound import (
 __all__ = [
     "MessageUseCasePort",
     "AgentHandlerPort",
+    "KnowledgeIngestionToolPort",
     "KnowledgeRetrieverPort",
     "OpenAiChatPort",
     "RouterModelPort",
