@@ -1,9 +1,54 @@
 services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: agent-swarm-backend-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-agent_swarm}
+      POSTGRES_USER: ${POSTGRES_USER:-agent_swarm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agent_swarm}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agent_swarm} -d ${POSTGRES_DB:-agent_swarm}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   api:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: agent-swarm-backend-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://agent_swarm:agent_swarm@postgres:5432/agent_swarm}
+      KNOWLEDGE_MODEL: ${KNOWLEDGE_MODEL:-gpt-4.1-mini}
     ports:
       - "8000:8000"
     restart: unless-stopped
+
+  rag_ingest:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["rag"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://agent_swarm:agent_swarm@postgres:5432/agent_swarm}
+      RAG_SEED_URLS_PATH: ${RAG_SEED_URLS_PATH:-app/rag_pipeline/seedUrls.json}
+      RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL:-text-embedding-3-small}
+      RAG_EMBEDDING_DIM: ${RAG_EMBEDDING_DIM:-1536}
+      RAG_PIPELINE_COMMAND: ${RAG_PIPELINE_COMMAND:-ingest}
+      RAG_PIPELINE_ARGS: ${RAG_PIPELINE_ARGS:-}
+    command: ["sh", "-c", "python -m app.rag_pipeline.cli $$RAG_PIPELINE_COMMAND $$RAG_PIPELINE_ARGS"]
+    restart: "no"
+
+volumes:
+  postgres_data:
