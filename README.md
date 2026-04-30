@@ -38,16 +38,39 @@ Knowledge answer generation now uses a dedicated model configuration independent
 - `KNOWLEDGE_MODEL`: formats grounded knowledge answers from retrieved RAG chunks.
 
 Planned HTTP routes:
-- `POST /messages`: accepts `{ "message": "<text>", "userId": "<id>" }` and returns a normalized JSON payload.
+- `POST /messages`: accepts `{ "message": "<text>", "userId": "<id>", "googleIdToken": "<optional>" }` and returns a normalized JSON payload with `reply`, `traceId`, and `status`; every turn persists `user_request` and `model_answer` (plus routed agent labels and timestamps) keyed by guest user label or authenticated Google subject.
 - `GET /health`: returns service health status for operational checks.
 
 ### Docker setup
 
-Run with Docker Compose:
+Compose starts **Postgres**, **session Postgres**, and the **API** only. Applying RAG DDL and **loading seed chunks** is a **separate one-shot** invoked with the bundled merge file.
+
+**First deploy (fresh `postgres_data` volume or empty RAG index):**
+
+```bash
+docker compose up -d postgres session_postgres
+docker compose -f docker-compose.yml -f docker-compose.rag-seed.yml run --rm rag_seed
+docker compose up -d
+```
+
+Repeat **`rag_seed`** after wiping the Postgres volume or whenever you want to reload `RAG_SEED_URLS_PATH` (see **`docker-compose.rag-seed.yml`**). To pass extra CLI flags (e.g. **`--crawl-version`**), either run **`migrate`** / **`ingest`** manually or adjust the **`command:`** block in **`docker-compose.rag-seed.yml`**.
+
+Alternatively run **`python -m app.infra.rag_pipeline.cli migrate`** then **`python -m app.infra.rag_pipeline.cli ingest`** locally (venv) against **`DATABASE_URL`** — same pipeline as **`rag_seed`**.
+
+**Container image CMD** applies **RAG + user-message SQL migrations only** (no ingestion). Plain **`docker run`** without Compose still needs Postgres on the **`DATABASE_URL`** host and **`rag_seed`** (or **`migrate`** + **`ingest`**) executed once before relying on **`KnowledgeAgent`**.
+
+Run with Docker Compose (after seed when needed):
 
 ```bash
 docker compose up --build
 ```
+
+Runtime environment split:
+- `DATABASE_URL`: RAG Postgres database.
+- `SESSION_DATABASE_URL`: dedicated Postgres volume for authenticated `app_users` and per-turn `user_message_turns`.
+- `GOOGLE_CLIENT_ID`: audience expected when validating Google ID tokens for authenticated `/messages` calls.
+
+Compose mounts named volumes **`postgres_data`** (RAG) and **`session_postgres_data`** (user messages).
 
 Run with Docker only:
 
@@ -72,60 +95,74 @@ RAG storage service:
 docker compose up -d postgres
 ```
 
+Session Postgres (user/message persistence):
+
+```bash
+docker compose up -d session_postgres
+```
+
+User message persistence model:
+- `app_users`: Google profile rows keyed by Google subject (`google_subject`).
+- `user_message_turns`: stores every exchange with `conversation_owner_key` (`guest:<userId>` or `google:<subject>`), `client_user_label`, `user_request`, `model_answer`, `routed_agent`, `trace_id`, timestamps, and optionally `user_id`.
+- Sessions are a UI concept only—there is **no finalize endpoint**.
+
+Each `/messages` call loads persisted same-day turns for the same logical user (guest label or authenticated subject) before routing.
+
 Run migrations:
 
 ```bash
-python -m app.rag_pipeline.cli migrate
+python -m app.infra.rag_pipeline.cli migrate
+python -m message_persistence.cli migrate
 ```
 
-Seed URL manifest lives at `app/rag_pipeline/seedUrls.json`.
+Seed URL manifest lives at `app/infra/rag_pipeline/seedUrls.json`.
 
 Run ingestion from the JSON base URLs:
 
 ```bash
-python -m app.rag_pipeline.cli ingest --crawl-version 20260429
+python -m app.infra.rag_pipeline.cli ingest --crawl-version 20260429
 ```
 
 Rerun/reindex pipeline:
 
 ```bash
-python -m app.rag_pipeline.cli reindex --crawl-version 20260429-r2
+python -m app.infra.rag_pipeline.cli reindex --crawl-version 20260429-r2
 ```
 
 Ingest one specific URL (research-agent style):
 
 ```bash
-python -m app.rag_pipeline.cli add-url --url "https://www.infinitepay.io/pix" --crawl-version 20260429-r3
+python -m app.infra.rag_pipeline.cli add-url --url "https://www.infinitepay.io/pix" --crawl-version 20260429-r3
 ```
 
 Structured tool-call equivalent (future agent integration):
 
 ```bash
-python -m app.rag_pipeline.cli add-url --url "https://example.com/new-context"
+python -m app.infra.rag_pipeline.cli add-url --url "https://example.com/new-context"
 ```
 
 Run a retrieval check:
 
 ```bash
-python -m app.rag_pipeline.cli query --query "phone as a card machine" --top-k 3 --pretty
+python -m app.infra.rag_pipeline.cli query --query "phone as a card machine" --top-k 3 --pretty
 ```
 
-Optional one-off ingestion container:
+Compose RAG jobs (optional):
+
+- **First seed / empty index** — merge **`docker-compose.rag-seed.yml`** and **`run rag_seed`** (`migrate` + default `ingest` from the manifest). Matches the [Docker setup](#docker-setup) first-deploy flow.
+- **Flexible one-off** — **`docker compose --profile rag run --rm rag_ingest`** (sets **`RAG_PIPELINE_COMMAND`** / **`RAG_PIPELINE_ARGS`**):
 
 ```bash
-docker compose --profile rag run --rm rag_ingest
-```
-
-Compose-driven RAG command modes:
-
-```bash
-# 1) Database setup / bulk seed from app/rag_pipeline/seedUrls.json (default mode)
+# Bulk ingest with explicit crawl label (example)
 docker compose --profile rag run --rm \
   -e RAG_PIPELINE_COMMAND=ingest \
   -e RAG_PIPELINE_ARGS="--crawl-version 20260429" \
   rag_ingest
 
-# 2) Future research-agent trigger: ingest one URL directly
+# Shorthand: default is also `ingest`
+docker compose --profile rag run --rm rag_ingest
+
+# One URL
 docker compose --profile rag run --rm \
   -e RAG_PIPELINE_COMMAND=add-url \
   -e RAG_PIPELINE_ARGS="--url https://www.infinitepay.io/pix --crawl-version 20260429-rurl" \

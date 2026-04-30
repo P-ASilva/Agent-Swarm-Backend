@@ -1,3 +1,18 @@
+
+/refactor renamed **`DefaultMessageUseCase`** → **`MessageUseCase`** (module **`defaultMessageUseCase`** → **`messageUseCase`**).
+/refactor moved RAG package to **`app.infra.rag_pipeline`** with seed manifest **`app/infra/rag_pipeline/seedUrls.json`**; user-message migrations CLI to **`message_persistence`** (`python -m message_persistence.cli migrate` at repo root); removed **`app.rag_pipeline`** / **`app.message_db`** packages.
+/refactor simplified `app.infra.rag_pipeline.cli` ingestion args: derive explicit URLs only from `seed_url` (`add-url` maps `--url` there), drop redundant **`url`** merge path that duplicated each URL once.
+/chore removed unused `RAG_BOOTSTRAP_CRAWL_VERSION` from `docker-compose.rag-seed.yml` (seed `ingest` uses CLI defaults unless you override `command:` or use `rag_ingest`).
+/chore split RAG from API (`docker-compose.rag-seed.yml` → `rag_seed` runs **`migrate` + `ingest`**); **`cli`** no longer exposes the removed **`init`** / **`RAG_INIT_SKIP`** path.
+
+/feat removed `POST /sessions/finalize` and snapshot/session tables in favor of a single append-only persistence path (`user_message_turns` keyed by guest `client_user_label` or `google:<subject>` plus content, reply, routed agent, timestamps).
+/refactor migrated user-message DDL to `infra/sql/user_messages` with CLI `python -m message_persistence.cli migrate`; Compose `session_postgres` volume retains durable Postgres data via `SESSION_DATABASE_URL`.
+
+/feat changed persistence format to per-message Google-authenticated history using `app_users` + `user_message_turns`, replacing frontend explicit session delimitation as primary flow.
+/feat updated `/messages` to accept optional `googleIdToken`, load same-day user history into model context, and persist request/answer turns per authenticated user.
+/refactor simplified frontend flow by removing explicit end-session finalize UX and adding inline login mode selector (guest or Google) for smoother testing.
+
+/feat added dedicated `session_postgres` docker service, `SESSION_DATABASE_URL` wiring, and session metadata migrations/CLI runner.
 /chore removed unused test-suite leftovers (obsolete fixtures manifest, unused conftest fixtures, and empty test directories) after compacting coverage to smoke + integration.
 /test compacted automated coverage to smoke + integration-only flows, removing deterministic unit suites that depended on mocked/stubbed data.
 /feat added dedicated knowledge-answer prompting with strict JSON format contract, injected RAG context, and independent `KNOWLEDGE_MODEL` configuration separate from `ROUTER_MODEL`.
@@ -26,6 +41,8 @@
 /chore added infrastructure scaffolding for consistent local and CI environments, aligning service startup and dependency wiring across execution modes.
 /test added shell smoke checks (`tests/smoke/smoke_api.ps1` and `tests/smoke/smoke_api.sh`) for `/health` and `/messages`, and documented local smoke commands in `README.md`.
 /test added container-focused validation coverage to verify health and message routes under Dockerized runtime conditions.
-/test added dotenv-based OpenAI connectivity smoke script to validate `OPEN_API_KEY` authentication and API reachability.
+/test added dotenv-based OpenAI connectivity smoke script to validate `OPENAI_API_KEY` authentication and API reachability.
 /docs added `app/README.md` with local API URLs, manual route checks, and command lines for smoke and pytest scripts.
 /chore added `uvicorn` to `requirements.txt` to support local API startup command.
+/refactor moved session DB error translation from use case into postgres adapters using `PersistencyUnavailableError` for hexagonal dependency direction.
+/fix map session DB persistence errors during `/messages` to `PersistencyUnavailableError` (`503`) when migrations/store are unavailable.
