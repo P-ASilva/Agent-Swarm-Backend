@@ -1,3 +1,5 @@
+/chore removed unused test-suite leftovers (obsolete fixtures manifest, unused conftest fixtures, and empty test directories) after compacting coverage to smoke + integration.
+/test compacted automated coverage to smoke + integration-only flows, removing deterministic unit suites that depended on mocked/stubbed data.
 /feat added dedicated knowledge-answer prompting with strict JSON format contract, injected RAG context, and independent `KNOWLEDGE_MODEL` configuration separate from `ROUTER_MODEL`.
 /fix fixed KnowledgeAgent retrieval misses caused by inconsistent `.env` loading between API and RAG CLI by loading dotenv inside `buildEmbeddingProviderFromEnv`, then reindexed seed URLs with `text-embedding-3-small`.
 /refactor reworked `playground-system` into a minimal bot test interface with neutral naming, removing legacy `backend/` and `frontend/` folders and keeping only the latest message/answer flow.

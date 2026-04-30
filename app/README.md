@@ -43,16 +43,10 @@ From the repository root:
 
 ```powershell
 # API smoke checks (PowerShell script)
-powershell -ExecutionPolicy Bypass -File tests/smoke/smokeApi.ps1
+powershell -ExecutionPolicy Bypass -File tests/smoke/smokeDocker.ps1
 
-# Route contracts
-.\.venv\Scripts\python -m pytest tests/routes -q
-
-# API integration + failure paths
+# Integration tests
 .\.venv\Scripts\python -m pytest tests/integration -q
-
-# Full suite
-.\.venv\Scripts\python -m pytest -q
 ```
 
 Optional bash smoke script (targets a running API container):
