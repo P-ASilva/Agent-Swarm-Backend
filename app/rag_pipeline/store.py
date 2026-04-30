@@ -201,6 +201,7 @@ class PgvectorStore:
         topK: int = 5,
         embeddingModel: str | None = None,
     ) -> list[dict[str, Any]]:
+        queryVector = _vectorLiteral(queryEmbedding)
         whereClauses = [
             "c.is_active = TRUE",
             "d.is_active = TRUE",
@@ -212,7 +213,6 @@ class PgvectorStore:
             whereClauses.append("c.embedding_model = %s")
             params.append(embeddingModel)
 
-        params.extend([_vectorLiteral(queryEmbedding), topK])
         whereSql = " AND ".join(whereClauses)
 
         with psycopg.connect(self.databaseUrl, autocommit=True) as connection:
@@ -233,7 +233,7 @@ class PgvectorStore:
                     ORDER BY c.embedding <=> %s::vector
                     LIMIT %s
                     """,
-                    [*params[:-2], params[-2], params[-2], params[-1]],
+                    [queryVector, *params, queryVector, topK],
                 )
                 rows = cursor.fetchall()
 

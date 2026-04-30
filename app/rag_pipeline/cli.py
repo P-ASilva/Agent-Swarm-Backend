@@ -3,12 +3,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from datetime import UTC, datetime
+from datetime import datetime, UTC
 
-from app.rag_pipeline.chunk import DeterministicChunker
 from app.rag_pipeline.embed import buildEmbeddingProviderFromEnv
-from app.rag_pipeline.fetch import WebContentLoader
-from app.rag_pipeline.sources import computeSeedManifestHash, loadSeedUrls
+from app.rag_pipeline.service import RagIngestionService
 from app.rag_pipeline.store import PgvectorStore
 
 
@@ -61,64 +59,35 @@ def _runIngestion(args: argparse.Namespace, *, runType: str) -> int:
         explicitUrls.extend(args.url)
     explicitUrls = explicitUrls or None
 
-    seedUrls = loadSeedUrls(
+    service = RagIngestionService.fromEnv()
+    result = service.run(
+        runType=runType,
         contextPath=args.context_path,
         explicitUrls=explicitUrls,
         manifestPath=args.manifest_path,
+        crawlVersion=args.crawl_version,
+        maxPages=args.max_pages,
+        chunkSize=args.chunk_size,
+        chunkOverlap=args.chunk_overlap,
+        runLabel=args.run_label,
     )
-    seedManifestHash = computeSeedManifestHash(seedUrls)
-    embeddingProvider = buildEmbeddingProviderFromEnv()
-    chunker = DeterministicChunker(chunkSize=args.chunk_size, overlap=args.chunk_overlap)
-    loader = WebContentLoader()
-    store = PgvectorStore()
-
-    store.applyMigrations()
-    runLabel = args.run_label or f"{runType}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
-    runId = store.startIngestionRun(
-        runLabel=runLabel,
-        runType=runType,
-        seedManifestHash=seedManifestHash,
-        contextPath=args.manifest_path or ("direct-url-input" if explicitUrls else args.context_path),
-    )
-
-    documentCount = 0
-    chunkCount = 0
-    try:
-        documents = loader.loadMany(seedUrls, maxPages=args.max_pages)
-        for document in documents:
-            chunks = chunker.chunkText(document.text)
-            if not chunks:
-                continue
-            embeddings = embeddingProvider.embedTexts([chunk.text for chunk in chunks])
-            _, inserted = store.upsertDocumentAndChunks(
-                document=document,
-                chunks=chunks,
-                embeddings=embeddings,
-                crawlVersion=args.crawl_version,
-                embeddingModel=embeddingProvider.modelName,
-                embeddingDim=embeddingProvider.embeddingDim,
-                runId=runId,
-            )
-            documentCount += 1
-            chunkCount += inserted
-
-        stats = {
-            "documents_processed": documentCount,
-            "chunks_written": chunkCount,
-            "embedding_model": embeddingProvider.modelName,
-            "embedding_dim": embeddingProvider.embeddingDim,
-            "seed_url_count": len(seedUrls),
-        }
-        store.finishIngestionRun(runId=runId, status="completed", stats=stats)
-        print(json.dumps({"run_id": runId, "status": "completed", "stats": stats}, indent=2))
-        return 0
-    except Exception as exc:
-        store.finishIngestionRun(
-            runId=runId,
-            status="failed",
-            stats={"error": f"{type(exc).__name__}: {exc}"},
+    print(
+        json.dumps(
+            {
+                "run_id": result.runId,
+                "status": result.status,
+                "stats": {
+                    "documents_processed": result.documentsProcessed,
+                    "chunks_written": result.chunksWritten,
+                    "embedding_model": service.embeddingProvider.modelName,
+                    "embedding_dim": service.embeddingProvider.embeddingDim,
+                    "seed_url_count": result.seedUrlCount,
+                },
+            },
+            indent=2,
         )
-        raise
+    )
+    return 0
 
 
 def _runQuery(args: argparse.Namespace) -> int:

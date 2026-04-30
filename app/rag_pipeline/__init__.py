@@ -7,6 +7,7 @@ from app.rag_pipeline.embed import (
 )
 from app.rag_pipeline.fetch import FetchedDocument, WebContentLoader
 from app.rag_pipeline.sources import computeSeedManifestHash, loadSeedUrls
+from app.rag_pipeline.service import RagIngestionService
 from app.rag_pipeline.store import PgvectorStore
 
 __all__ = [
@@ -16,6 +17,7 @@ __all__ = [
     "FetchedDocument",
     "OpenAiEmbeddingProvider",
     "PgvectorStore",
+    "RagIngestionService",
     "TextChunk",
     "WebContentLoader",
     "buildEmbeddingProviderFromEnv",

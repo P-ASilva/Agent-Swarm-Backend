@@ -7,6 +7,12 @@ from dataclasses import dataclass
 from typing import Protocol
 
 import httpx
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:  # pragma: no cover - fallback for minimal environments
+    def load_dotenv(*args, **kwargs):  # type: ignore[no-redef]
+        del args, kwargs
+        return False
 
 
 class EmbeddingProvider(Protocol):
@@ -72,6 +78,8 @@ class OpenAiEmbeddingProvider:
 
 
 def buildEmbeddingProviderFromEnv() -> EmbeddingProvider:
+    # Keep embedding config resolution consistent between API and CLI processes.
+    load_dotenv()
     model = os.getenv("RAG_EMBEDDING_MODEL", "text-embedding-3-small").strip()
     dim = int(os.getenv("RAG_EMBEDDING_DIM", "1536"))
     endpoint = os.getenv("OPENAI_EMBEDDINGS_ENDPOINT", "https://api.openai.com/v1/embeddings")
