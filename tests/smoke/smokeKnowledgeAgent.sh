@@ -12,12 +12,12 @@ from fastapi.testclient import TestClient
 
 from app.adapters.outbound.postgres import KnowledgeIngestionToolAdapter, PgvectorKnowledgeRetriever
 from app.application.agents import KnowledgeAgent, SupportAgentMock
-from app.application.usecase import DefaultMessageUseCase
+from app.application.usecase import MessageUseCase
 from app.domain.models import RouterDecision
 from app.main import createApp
-from app.rag_pipeline import DeterministicEmbeddingProvider, WebContentLoader
-from app.rag_pipeline.service import RagIngestionService
-from app.rag_pipeline.store import PgvectorStore
+from app.infra.rag_pipeline import DeterministicEmbeddingProvider, WebContentLoader
+from app.infra.rag_pipeline.service import RagIngestionService
+from app.infra.rag_pipeline.store import PgvectorStore
 
 
 class ForcedKnowledgeRouter:
@@ -36,7 +36,7 @@ knowledge_agent = KnowledgeAgent(
     ingestionTool=KnowledgeIngestionToolAdapter(ingestionService=service),
 )
 app = createApp(
-    messageUseCase=DefaultMessageUseCase(
+    messageUseCase=MessageUseCase(
         routerModel=ForcedKnowledgeRouter(),
         knowledgeAgent=knowledge_agent,
         supportAgent=SupportAgentMock(),

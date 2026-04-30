@@ -9,8 +9,8 @@ from typing import Any
 
 import psycopg
 
-from app.rag_pipeline.chunk import TextChunk
-from app.rag_pipeline.fetch import FetchedDocument
+from app.infra.rag_pipeline.chunk import TextChunk
+from app.infra.rag_pipeline.fetch import FetchedDocument
 
 
 def _defaultDatabaseUrl() -> str:

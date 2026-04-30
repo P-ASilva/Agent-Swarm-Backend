@@ -22,10 +22,10 @@ $tapUrl = "file:///$tapPath"
 $boletoUrl = "file:///$boletoPath"
 
 Write-Host "=== RAG smoke: applying migrations ==="
-& $python -m app.rag_pipeline.cli migrate
+& $python -m app.infra.rag_pipeline.cli migrate
 
 Write-Host "=== RAG smoke: ingesting fixture content ==="
-& $python -m app.rag_pipeline.cli ingest `
+& $python -m app.infra.rag_pipeline.cli ingest `
   --seed-url $tapUrl `
   --seed-url $boletoUrl `
   --crawl-version smoke-v1 `
@@ -33,7 +33,7 @@ Write-Host "=== RAG smoke: ingesting fixture content ==="
   --run-label smoke-rag
 
 Write-Host "=== RAG smoke: querying stored chunks ==="
-$queryResult = & $python -m app.rag_pipeline.cli query `
+$queryResult = & $python -m app.infra.rag_pipeline.cli query `
   --query "phone card machine" `
   --top-k 1 `
   --pretty

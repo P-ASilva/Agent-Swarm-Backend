@@ -5,11 +5,11 @@ from uuid import uuid4
 
 import pytest
 
-from app.rag_pipeline.chunk import DeterministicChunker
-from app.rag_pipeline.embed import DeterministicEmbeddingProvider
-from app.rag_pipeline.fetch import FetchedDocument
-from app.rag_pipeline.sources import computeSeedManifestHash
-from app.rag_pipeline.store import PgvectorStore
+from app.infra.rag_pipeline.chunk import DeterministicChunker
+from app.infra.rag_pipeline.embed import DeterministicEmbeddingProvider
+from app.infra.rag_pipeline.fetch import FetchedDocument
+from app.infra.rag_pipeline.sources import computeSeedManifestHash
+from app.infra.rag_pipeline.store import PgvectorStore
 
 
 @pytest.mark.integration

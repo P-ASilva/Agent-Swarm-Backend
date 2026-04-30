@@ -31,10 +31,10 @@ PY
 )"
 
 echo "=== RAG smoke: applying migrations ==="
-"$PYTHON_BIN" -m app.rag_pipeline.cli migrate
+"$PYTHON_BIN" -m app.infra.rag_pipeline.cli migrate
 
 echo "=== RAG smoke: ingesting fixture content ==="
-"$PYTHON_BIN" -m app.rag_pipeline.cli ingest \
+"$PYTHON_BIN" -m app.infra.rag_pipeline.cli ingest \
   --seed-url "$tap_abs" \
   --seed-url "$boleto_abs" \
   --crawl-version smoke-v1 \
@@ -42,7 +42,7 @@ echo "=== RAG smoke: ingesting fixture content ==="
   --run-label smoke-rag
 
 echo "=== RAG smoke: querying stored chunks ==="
-query_json="$("$PYTHON_BIN" -m app.rag_pipeline.cli query --query 'phone card machine' --top-k 1)"
+query_json="$("$PYTHON_BIN" -m app.infra.rag_pipeline.cli query --query 'phone card machine' --top-k 1)"
 echo "$query_json"
 
 python - <<'PY' "$query_json"

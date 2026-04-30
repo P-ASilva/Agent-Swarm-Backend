@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from app.domain.models import KnowledgeIngestionResult
 from app.domain.ports import KnowledgeIngestionToolPort
-from app.rag_pipeline.service import RagIngestionService
+from app.infra.rag_pipeline.service import RagIngestionService
 
 
 @dataclass

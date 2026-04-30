@@ -12,9 +12,9 @@ from app.adapters.outbound.postgres import (
 from app.application.agents import FallbackAgentMock, KnowledgeAgent, SupportAgentMock
 from app.application.usecase import DefaultMessageUseCase
 from app.domain.ports import MessageUseCasePort
-from app.rag_pipeline import WebContentLoader, buildEmbeddingProviderFromEnv
-from app.rag_pipeline.service import RagIngestionService
-from app.rag_pipeline.store import PgvectorStore
+from app.infra.rag_pipeline import WebContentLoader, buildEmbeddingProviderFromEnv
+from app.infra.rag_pipeline.service import RagIngestionService
+from app.infra.rag_pipeline.store import PgvectorStore
 
 
 def getMessageUseCase(request: Request) -> MessageUseCasePort:

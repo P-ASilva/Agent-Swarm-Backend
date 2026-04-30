@@ -4,8 +4,8 @@ from dataclasses import dataclass
 
 from app.domain.models import RetrievedChunk
 from app.domain.ports import KnowledgeRetrieverPort
-from app.rag_pipeline.embed import EmbeddingProvider
-from app.rag_pipeline.store import PgvectorStore
+from app.infra.rag_pipeline.embed import EmbeddingProvider
+from app.infra.rag_pipeline.store import PgvectorStore
 
 
 @dataclass
