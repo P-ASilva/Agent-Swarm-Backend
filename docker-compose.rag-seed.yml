@@ -1,0 +1,29 @@
+# Merge with the root compose file to load the vector index once (fresh volume or empty RAG catalog).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.rag-seed.yml run --rm rag_seed
+#
+# Requires Postgres (and network) already up — e.g. `docker compose up -d postgres` or full stack minus optional steps.
+
+services:
+  rag_seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agent-swarm-backend-rag-seed
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://agent_swarm:agent_swarm@postgres:5432/agent_swarm}
+      RAG_SEED_URLS_PATH: ${RAG_SEED_URLS_PATH:-app/infra/rag_pipeline/seedUrls.json}
+      RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL:-text-embedding-3-small}
+      RAG_EMBEDDING_DIM: ${RAG_EMBEDDING_DIM:-1536}
+    command:
+      [
+        "sh",
+        "-c",
+        "python -m app.infra.rag_pipeline.cli migrate && python -m app.infra.rag_pipeline.cli ingest",
+      ]
+    restart: "no"

@@ -17,16 +17,44 @@ services:
       retries: 10
     restart: unless-stopped
 
+  session_postgres:
+    image: postgres:16
+    container_name: agent-swarm-backend-session-postgres
+    environment:
+      POSTGRES_DB: ${SESSION_POSTGRES_DB:-session_swarm}
+      POSTGRES_USER: ${SESSION_POSTGRES_USER:-session_swarm}
+      POSTGRES_PASSWORD: ${SESSION_POSTGRES_PASSWORD:-session_swarm}
+    ports:
+      - "5433:5432"
+    volumes:
+      - session_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${SESSION_POSTGRES_USER:-session_swarm} -d ${SESSION_POSTGRES_DB:-session_swarm}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   api:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: agent-swarm-backend-api
+    env_file:
+      - .env
     depends_on:
       postgres:
         condition: service_healthy
+      session_postgres:
+        condition: service_healthy
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://agent_swarm:agent_swarm@postgres:5432/agent_swarm}
+      SESSION_DATABASE_URL: ${SESSION_DATABASE_URL:-postgresql://session_swarm:session_swarm@session_postgres:5432/session_swarm}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID is required in .env}
       KNOWLEDGE_MODEL: ${KNOWLEDGE_MODEL:-gpt-4.1-mini}
     ports:
       - "8000:8000"
@@ -37,18 +65,21 @@ services:
       context: .
       dockerfile: Dockerfile
     profiles: ["rag"]
+    env_file:
+      - .env
     depends_on:
       postgres:
         condition: service_healthy
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://agent_swarm:agent_swarm@postgres:5432/agent_swarm}
-      RAG_SEED_URLS_PATH: ${RAG_SEED_URLS_PATH:-app/rag_pipeline/seedUrls.json}
+      RAG_SEED_URLS_PATH: ${RAG_SEED_URLS_PATH:-app/infra/rag_pipeline/seedUrls.json}
       RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL:-text-embedding-3-small}
       RAG_EMBEDDING_DIM: ${RAG_EMBEDDING_DIM:-1536}
       RAG_PIPELINE_COMMAND: ${RAG_PIPELINE_COMMAND:-ingest}
       RAG_PIPELINE_ARGS: ${RAG_PIPELINE_ARGS:-}
-    command: ["sh", "-c", "python -m app.rag_pipeline.cli $$RAG_PIPELINE_COMMAND $$RAG_PIPELINE_ARGS"]
+    command: ["sh", "-c", "python -m app.infra.rag_pipeline.cli $$RAG_PIPELINE_COMMAND $$RAG_PIPELINE_ARGS"]
     restart: "no"
 
 volumes:
   postgres_data:
+  session_postgres_data:
