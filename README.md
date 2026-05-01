@@ -10,8 +10,8 @@ flowchart TD
   API --> UC[MessageUseCase]
 
   UC --> GRin["Guardrails entrada MessageGuardrailsPort<br/>RuleBasedGuardrailsAdapter: ill-intent + listas rules"]
-  GRin --> R[RouterAgent OpenAiChatAdapter]
-
+  GRin --> O[OpenAiChatAdapter]
+  O --> R[RouterAgent]
   R -->|knowledge| K[KnowledgeAgent]
   R -->|support| S[SupportAgent]
   R -->|swarm| SW[SwarmKnowledgeAgent]
