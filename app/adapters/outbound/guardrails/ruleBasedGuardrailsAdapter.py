@@ -15,6 +15,49 @@ _DEFAULT_OUTPUT_BLOCK_PT = (
     "A resposta foi limitada por políticas de segurança."
 )
 
+_ILL_INTENT_INPUT_SUBSTRINGS: tuple[str, ...] = (
+    "openai_api_key",
+    "openai api key",
+    "your openai api key",
+    "sua openai api key",
+    "qual a openai api key",
+    "what is your api key",
+    "show me the api key",
+    "reveal your api",
+    "reveal the api key",
+    "me passa a api key",
+    "me passe a api key",
+    "mostre a chave api",
+    "mostre sua chave",
+    "dump your env",
+    "dump the env",
+    "conteúdo do .env",
+    "conteudo do .env",
+    "printenv",
+    "private key",
+    "-----begin private key-----",
+    "sk-proj-",
+    "sk_live_",
+    "ghp_",
+    "xoxb-",
+    "xoxa-",
+    "aws_secret_access_key",
+    "api key do servidor",
+    "chave secreta do servidor",
+)
+
+_ILL_INTENT_OUTPUT_SUBSTRINGS: tuple[str, ...] = (
+    "sk-proj-",
+    "sk_live_",
+    "OPENAI_API_KEY=",
+    "openai_api_key=",
+    "-----BEGIN PRIVATE KEY-----",
+    "-----BEGIN RSA PRIVATE KEY-----",
+    "ghp_",
+    "xoxb-",
+    "aws_secret_access_key=",
+)
+
 
 def _currentUserSlice(contextualMessage: str) -> str:
     if _CURRENT_USER_MARKER in contextualMessage:
@@ -60,6 +103,12 @@ class RuleBasedGuardrailsAdapter:
                 rewrittenMessage=rewritten,
                 auditCode="input_truncated",
             )
+        if _matchesAny(current, _ILL_INTENT_INPUT_SUBSTRINGS):
+            return GuardrailVerdict(
+                allowed=False,
+                reply=self.inputBlockReply,
+                auditCode="input_blocked_ill_intent",
+            )
         if _matchesAny(current, self.inputBlockedSubstrings):
             return GuardrailVerdict(
                 allowed=False,
@@ -76,6 +125,12 @@ class RuleBasedGuardrailsAdapter:
         conversationOwnerKey: str,
     ) -> GuardrailVerdict:
         del route, conversationOwnerKey
+        if _matchesAny(reply, _ILL_INTENT_OUTPUT_SUBSTRINGS):
+            return GuardrailVerdict(
+                allowed=False,
+                reply=self.outputBlockReply,
+                auditCode="output_blocked_ill_intent",
+            )
         if _matchesAny(reply, self.outputBlockedSubstrings):
             return GuardrailVerdict(
                 allowed=False,

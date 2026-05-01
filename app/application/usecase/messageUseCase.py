@@ -31,10 +31,10 @@ class MessageUseCase(MessageUseCasePort):
     knowledgeAgent: AgentHandlerPort
     supportAgent: AgentHandlerPort
     swarmKnowledgeAgent: AgentHandlerPort
+    messageGuardrails: MessageGuardrailsPort
     routerModel: RouterModelPort | None = None
     googleTokenVerifier: GoogleTokenVerifierPort | None = None
     userMessagePersistence: UserMessagePersistencePort | None = None
-    messageGuardrails: MessageGuardrailsPort | None = None
     knowledgeModelLabel: str | None = None
     supportModelLabel: str | None = None
     swarmKnowledgeLabel: str | None = None
@@ -119,31 +119,30 @@ class MessageUseCase(MessageUseCasePort):
         reply: str | None = None
         agentInvoked = False
 
-        if self.messageGuardrails is not None:
-            inputVerdict = self.messageGuardrails.evaluateInput(
-                contextualMessage,
-                conversationOwnerKey=conversationOwnerKey,
-                clientUserLabel=clientUserLabel,
-                hasGoogleIdentity=identity is not None,
+        inputVerdict = self.messageGuardrails.evaluateInput(
+            contextualMessage,
+            conversationOwnerKey=conversationOwnerKey,
+            clientUserLabel=clientUserLabel,
+            hasGoogleIdentity=identity is not None,
+        )
+        logger.info(
+            "guardrail input outcome=%s audit=%s traceId=%s",
+            "allowed" if inputVerdict.allowed else "blocked",
+            inputVerdict.auditCode,
+            traceId,
+        )
+        if not inputVerdict.allowed:
+            blockedByInput = True
+            reply = (inputVerdict.reply or _INPUT_GUARD_FALLBACK_REPLY).strip() or _INPUT_GUARD_FALLBACK_REPLY
+            decision = RouterDecision(
+                route="knowledge",
+                rationale=f"guardrail:{inputVerdict.auditCode}",
+                usedModel=None,
+                degraded=inputVerdict.degraded,
+                reply=None,
             )
-            logger.info(
-                "guardrail input outcome=%s audit=%s traceId=%s",
-                "allowed" if inputVerdict.allowed else "blocked",
-                inputVerdict.auditCode,
-                traceId,
-            )
-            if not inputVerdict.allowed:
-                blockedByInput = True
-                reply = (inputVerdict.reply or _INPUT_GUARD_FALLBACK_REPLY).strip() or _INPUT_GUARD_FALLBACK_REPLY
-                decision = RouterDecision(
-                    route="knowledge",
-                    rationale=f"guardrail:{inputVerdict.auditCode}",
-                    usedModel=None,
-                    degraded=inputVerdict.degraded,
-                    reply=None,
-                )
-            elif inputVerdict.rewrittenMessage is not None:
-                contextualMessage = inputVerdict.rewrittenMessage
+        elif inputVerdict.rewrittenMessage is not None:
+            contextualMessage = inputVerdict.rewrittenMessage
 
         if not blockedByInput:
             decision = routerModel.decideRoute(contextualMessage)
@@ -177,21 +176,20 @@ class MessageUseCase(MessageUseCasePort):
         assert reply is not None
 
         outputDegradedExtra = False
-        if self.messageGuardrails is not None:
-            outputVerdict = self.messageGuardrails.evaluateOutput(
-                reply,
-                route=decision.route,
-                conversationOwnerKey=conversationOwnerKey,
-            )
-            logger.info(
-                "guardrail output outcome=%s audit=%s traceId=%s",
-                "allowed" if outputVerdict.allowed else "blocked",
-                outputVerdict.auditCode,
-                traceId,
-            )
-            if not outputVerdict.allowed and outputVerdict.reply:
-                reply = outputVerdict.reply.strip() or reply
-                outputDegradedExtra = outputVerdict.degraded
+        outputVerdict = self.messageGuardrails.evaluateOutput(
+            reply,
+            route=decision.route,
+            conversationOwnerKey=conversationOwnerKey,
+        )
+        logger.info(
+            "guardrail output outcome=%s audit=%s traceId=%s",
+            "allowed" if outputVerdict.allowed else "blocked",
+            outputVerdict.auditCode,
+            traceId,
+        )
+        if not outputVerdict.allowed and outputVerdict.reply:
+            reply = outputVerdict.reply.strip() or reply
+            outputDegradedExtra = outputVerdict.degraded
 
         if self.userMessagePersistence is not None:
             self.userMessagePersistence.saveMessageTurn(

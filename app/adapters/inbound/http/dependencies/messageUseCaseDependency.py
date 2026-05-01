@@ -50,7 +50,7 @@ def getMessageUseCase(request: Request) -> MessageUseCasePort:
         supportModel=supportModel,
     )
     swarmGuideLabel = os.getenv("SWARM_KNOWLEDGE_LABEL", "implementation-guide").strip() or "implementation-guide"
-    messageGuardrails = _buildMessageGuardrailsOptional()
+    messageGuardrails = _buildMessageGuardrailsFromEnv()
     knowledgeAgent = KnowledgeAgent(
         retriever=PgvectorKnowledgeRetriever(
             embeddingProvider=embeddingProvider,
@@ -67,24 +67,22 @@ def getMessageUseCase(request: Request) -> MessageUseCasePort:
         knowledgeAgent=knowledgeAgent,
         supportAgent=supportAgent,
         swarmKnowledgeAgent=SwarmKnowledgeAgent(),
+        messageGuardrails=messageGuardrails,
         routerModel=RouterAgent(openAiChat=openAiChat),
         knowledgeModelLabel=knowledgeModel,
         supportModelLabel=supportModel,
         swarmKnowledgeLabel=swarmGuideLabel,
         googleTokenVerifier=googleVerifier,
         userMessagePersistence=persistence,
-        messageGuardrails=messageGuardrails,
     )
     request.app.state._messageUseCase = useCase
     return useCase
 
 
-def _buildMessageGuardrailsOptional() -> MessageGuardrailsPort | None:
+def _buildMessageGuardrailsFromEnv() -> MessageGuardrailsPort:
     mode = os.getenv("GUARDRAILS_MODE", "").strip().lower()
-    if mode in ("", "off", "none", "moderation"):
-        return None
     if mode != "rules":
-        return None
+        return RuleBasedGuardrailsAdapter()
     inputRaw = os.getenv("GUARDRAILS_INPUT_BLOCK_SUBSTRINGS", "")
     outputRaw = os.getenv("GUARDRAILS_OUTPUT_BLOCK_SUBSTRINGS", "")
     maxRaw = os.getenv("GUARDRAILS_MAX_INPUT_CHARS", "0").strip() or "0"
