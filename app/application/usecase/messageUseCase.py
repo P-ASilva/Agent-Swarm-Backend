@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
-from app.application.agents import FallbackAgentMock, KnowledgeAgentMock, SupportAgentMock
+from app.application.agents import KnowledgeAgentMock, SupportAgentMock
 from app.domain.errors import PersistencyUnavailableError
 from app.domain.models import RouterDecision, UserMessageRecord
 from app.domain.ports import (
@@ -16,13 +17,14 @@ from app.domain.ports import (
     UserMessagePersistencePort,
 )
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class MessageUseCase(MessageUseCasePort):
     routerModel: RouterModelPort | None = None
     knowledgeAgent: AgentHandlerPort | None = None
     supportAgent: AgentHandlerPort | None = None
-    fallbackAgent: AgentHandlerPort | None = None
     googleTokenVerifier: GoogleTokenVerifierPort | None = None
     userMessagePersistence: UserMessagePersistencePort | None = None
 
@@ -32,13 +34,14 @@ class MessageUseCase(MessageUseCasePort):
         if not clientUserLabel:
             clientUserLabel = "unknown"
 
+        logger.info("request received userId=%s messageLen=%d", clientUserLabel, len(message))
+
         googleIdTokenRaw = payload.get("googleIdToken")
         hasGoogleToken = isinstance(googleIdTokenRaw, str) and bool(googleIdTokenRaw.strip())
 
         routerModel = self.routerModel or _UnavailableRouterModel()
         knowledgeAgent = self.knowledgeAgent or KnowledgeAgentMock()
         supportAgent = self.supportAgent or SupportAgentMock()
-        fallbackAgent = self.fallbackAgent or FallbackAgentMock()
         traceId = str(uuid4())
 
         identity = None
@@ -70,13 +73,25 @@ class MessageUseCase(MessageUseCasePort):
             )
 
         decision = routerModel.decideRoute(contextualMessage)
-        handlerByRoute: dict[str, AgentHandlerPort] = {
-            "knowledge": knowledgeAgent,
-            "support": supportAgent,
-            "fallback": fallbackAgent,
-        }
-        selectedHandler = handlerByRoute[decision.route]
-        reply = selectedHandler.handleMessage(contextualMessage)
+        logger.info(
+            "routing decision route=%s model=%s degraded=%s traceId=%s",
+            decision.route,
+            decision.usedModel,
+            decision.degraded,
+            traceId,
+        )
+
+        if decision.reply:
+            reply = decision.reply
+            logger.info("router static reply used traceId=%s", traceId)
+        else:
+            handlerByRoute: dict[str, AgentHandlerPort] = {
+                "knowledge": knowledgeAgent,
+                "support": supportAgent,
+            }
+            selectedHandler = handlerByRoute.get(decision.route, supportAgent)
+            logger.info("dispatching agent=%s traceId=%s", decision.route, traceId)
+            reply = selectedHandler.handleMessage(contextualMessage)
 
         if self.userMessagePersistence is not None:
             self.userMessagePersistence.saveMessageTurn(
@@ -88,6 +103,7 @@ class MessageUseCase(MessageUseCasePort):
                 route=decision.route,
                 traceId=traceId,
             )
+            logger.info("turn persisted traceId=%s", traceId)
 
         return {
             "status": "degraded" if decision.degraded else "ok",
@@ -100,10 +116,11 @@ class _UnavailableRouterModel(RouterModelPort):
     def decideRoute(self, message: str) -> RouterDecision:
         del message
         return RouterDecision(
-            route="fallback",
+            route="knowledge",
             degraded=True,
             rationale="router-model-unavailable",
             usedModel=None,
+            reply="Serviço temporariamente indisponível. Por favor, tente novamente.",
         )
 
 

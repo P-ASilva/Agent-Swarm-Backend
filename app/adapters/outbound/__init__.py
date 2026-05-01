@@ -1,5 +1,5 @@
-from app.adapters.outbound.openai import OpenAiChatAdapter, OpenAiRouterModelPlugin
 from app.adapters.outbound.google import GoogleTokenVerifierAdapter
+from app.adapters.outbound.openai import OpenAiChatAdapter, OpenAiWebSearchAdapter
 from app.adapters.outbound.postgres import (
     KnowledgeIngestionToolAdapter,
     PgvectorKnowledgeRetriever,
@@ -10,7 +10,7 @@ __all__ = [
     "GoogleTokenVerifierAdapter",
     "KnowledgeIngestionToolAdapter",
     "OpenAiChatAdapter",
-    "OpenAiRouterModelPlugin",
+    "OpenAiWebSearchAdapter",
     "PgvectorKnowledgeRetriever",
     "UserMessagePersistenceAdapter",
 ]

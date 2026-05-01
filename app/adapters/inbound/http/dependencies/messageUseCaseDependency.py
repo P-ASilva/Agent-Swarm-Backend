@@ -5,13 +5,13 @@ import os
 from fastapi import Request
 
 from app.adapters.outbound.google import GoogleTokenVerifierAdapter
-from app.adapters.outbound.openai import OpenAiChatAdapter, OpenAiRouterModelPlugin
+from app.adapters.outbound.openai import OpenAiChatAdapter, OpenAiWebSearchAdapter
 from app.adapters.outbound.postgres import (
     KnowledgeIngestionToolAdapter,
     PgvectorKnowledgeRetriever,
     UserMessagePersistenceAdapter,
 )
-from app.application.agents import FallbackAgentMock, KnowledgeAgent, SupportAgentMock
+from app.application.agents import KnowledgeAgent, RouterAgent, SupportAgentMock
 from app.application.usecase import MessageUseCase
 from app.domain.ports import MessageUseCasePort
 from app.infra.rag_pipeline import WebContentLoader, buildEmbeddingProviderFromEnv
@@ -29,7 +29,6 @@ def getMessageUseCase(request: Request) -> MessageUseCasePort:
         return cached
 
     openAiChat = OpenAiChatAdapter.fromEnv()
-    routerModel= os.getenv("ROUTER_MODEL", "gpt-4o-mini").strip()
     knowledgeModel = os.getenv("KNOWLEDGE_MODEL", "gpt-4.1-mini").strip()
     embeddingProvider = buildEmbeddingProviderFromEnv()
     ragStore = PgvectorStore()
@@ -38,10 +37,10 @@ def getMessageUseCase(request: Request) -> MessageUseCasePort:
         embeddingProvider=embeddingProvider,
         loader=WebContentLoader(),
     )
-    routerModel = OpenAiRouterModelPlugin(openAiChat=openAiChat)
     googleVerifier = _buildGoogleVerifierOptional()
+    webSearch = OpenAiWebSearchAdapter.fromEnv()
     useCase = MessageUseCase(
-        routerModel=routerModel,
+        routerModel=RouterAgent(openAiChat=openAiChat),
         knowledgeAgent=KnowledgeAgent(
             retriever=PgvectorKnowledgeRetriever(
                 embeddingProvider=embeddingProvider,
@@ -51,10 +50,10 @@ def getMessageUseCase(request: Request) -> MessageUseCasePort:
                 ingestionService=ragIngestionService,
             ),
             openAiChat=openAiChat,
+            webSearch=webSearch,
             responseModel=knowledgeModel,
         ),
         supportAgent=SupportAgentMock(openAiChat=openAiChat),
-        fallbackAgent=FallbackAgentMock(openAiChat=openAiChat),
         googleTokenVerifier=googleVerifier,
         userMessagePersistence=UserMessagePersistenceAdapter.fromEnv(),
     )
