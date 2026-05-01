@@ -9,7 +9,7 @@ flowchart TD
   Client[Cliente HTTP] --> API[FastAPI apiRouter]
   API --> UC[MessageUseCase]
 
-  UC --> GRin["Guardrails entrada MessageGuardrailsPort<br/>RuleBasedGuardrailsAdapter: ill-intent + listas rules"]
+  UC --> GRin["Guardrails"]
   GRin --> O[OpenAiChatAdapter]
   O --> R[RouterAgent]
   R -->|knowledge| K[KnowledgeAgent]
@@ -28,10 +28,6 @@ flowchart TD
   ING --> RAG
 
   EX --> PERM[UserMessagePersistenceAdapter]
-
-  K --> GRout["Guardrails"]
-  S --> GRout
-  SW --> GRout
 
   GRout --> PERM
 
