@@ -7,6 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.adapters.inbound.http.dependencies import getMessageUseCase
 from app.adapters.inbound.http.schemas import (
     HealthResponse,
+    MessageHistoryRequest,
+    MessageHistoryResponse,
     MessageRequest,
     MessageResponseEnvelope,
 )
@@ -55,12 +57,12 @@ async def postMessages(
     except InvalidGoogleTokenError as exc:
         raise HTTPException(
             status_code=401,
-            detail="Google login token is invalid or expired.",
+            detail="Token de login Google inválido ou expirado.",
         ) from exc
     except TimeoutError as exc:
         raise HTTPException(
             status_code=504,
-            detail="Timed out while processing message dependencies.",
+            detail="Tempo esgotado ao processar dependências da mensagem.",
         ) from exc
     except PersistencyUnavailableError as exc:
         raise HTTPException(
@@ -70,7 +72,43 @@ async def postMessages(
     except RuntimeError as exc:
         raise HTTPException(
             status_code=503,
-            detail="Message dependency is currently unavailable.",
+            detail="Dependência da mensagem está temporariamente indisponível.",
         ) from exc
 
     return MessageResponseEnvelope.model_validate(rawResult)
+
+
+@apiRouter.post(
+    "/messages/history",
+    response_model=MessageHistoryResponse,
+    tags=["messages"],
+    summary="List today's persisted message turns",
+    response_description="Chronological turns for the same owner key as POST /messages.",
+    responses={
+        401: {"description": "Google identity token is invalid or expired."},
+        422: {"description": "Request payload validation failed."},
+        503: {"description": "A required downstream dependency is unavailable."},
+    },
+)
+async def postMessagesHistory(
+    payload: MessageHistoryRequest,
+    useCase: MessageUseCasePort = Depends(getMessageUseCase),
+) -> MessageHistoryResponse:
+    payloadDict = {
+        "userId": payload.userId,
+        "googleIdToken": payload.googleIdToken,
+    }
+    try:
+        raw = await useCase.listTodayHistory(payloadDict)
+    except InvalidGoogleTokenError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail="Token de login Google inválido ou expirado.",
+        ) from exc
+    except PersistencyUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+        ) from exc
+
+    return MessageHistoryResponse.model_validate(raw)

@@ -6,12 +6,15 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
-from app.application.agents import KnowledgeAgentMock, SupportAgentMock
+from app.application.agents import KnowledgeAgentMock, SupportAgentMock, SwarmKnowledgeAgentMock
+from app.application.support_execution_context import supportConversationOwnerKeyContext
+from app.domain.conversationContextMarkers import FULL_CURRENT_USER_MESSAGE_LEADER
 from app.domain.errors import PersistencyUnavailableError
-from app.domain.models import RouterDecision, UserMessageRecord
+from app.domain.models import GoogleIdentity, RouterDecision, UserMessageRecord
 from app.domain.ports import (
     AgentHandlerPort,
     GoogleTokenVerifierPort,
+    MessageGuardrailsPort,
     MessageUseCasePort,
     RouterModelPort,
     UserMessagePersistencePort,
@@ -19,42 +22,85 @@ from app.domain.ports import (
 
 logger = logging.getLogger(__name__)
 
+_INPUT_GUARD_FALLBACK_REPLY = (
+    "Não posso processar esta mensagem. Reformule ou tente novamente."
+)
+
 
 @dataclass
 class MessageUseCase(MessageUseCasePort):
     routerModel: RouterModelPort | None = None
     knowledgeAgent: AgentHandlerPort | None = None
     supportAgent: AgentHandlerPort | None = None
+    swarmKnowledgeAgent: AgentHandlerPort | None = None
     googleTokenVerifier: GoogleTokenVerifierPort | None = None
     userMessagePersistence: UserMessagePersistencePort | None = None
+    messageGuardrails: MessageGuardrailsPort | None = None
+    knowledgeModelLabel: str | None = None
+    supportModelLabel: str | None = None
+    swarmKnowledgeLabel: str | None = None
 
-    async def execute(self, payload: dict[str, Any]) -> dict[str, Any]:
-        message = payload["message"]
+    def _clientConversationAndIdentity(
+        self,
+        payload: dict[str, Any],
+    ) -> tuple[str, str, GoogleIdentity | None]:
         clientUserLabel = str(payload.get("userId", "")).strip()
         if not clientUserLabel:
             clientUserLabel = "unknown"
-
-        logger.info("request received userId=%s messageLen=%d", clientUserLabel, len(message))
-
         googleIdTokenRaw = payload.get("googleIdToken")
         hasGoogleToken = isinstance(googleIdTokenRaw, str) and bool(googleIdTokenRaw.strip())
+        identity: GoogleIdentity | None = None
+        conversationOwnerKey = f"guest:{clientUserLabel}"
+        if hasGoogleToken:
+            if self.googleTokenVerifier is None or self.userMessagePersistence is None:
+                raise PersistencyUnavailableError(
+                    "Mensagens autenticadas com Google exigem verificador de token e "
+                    "persistência de mensagens configurados (SESSION_DATABASE_URL)."
+                )
+            identity = self.googleTokenVerifier.verifyIdToken(googleIdTokenRaw)
+            conversationOwnerKey = f"google:{identity.subject}"
+        return clientUserLabel, conversationOwnerKey, identity
+
+    async def listTodayHistory(self, payload: dict[str, Any]) -> dict[str, Any]:
+        _clientUserLabel, conversationOwnerKey, _identity = self._clientConversationAndIdentity(payload)
+        if self.userMessagePersistence is None:
+            return {"turns": []}
+        dayStart = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        dayEnd = dayStart + timedelta(days=1)
+        rows = self.userMessagePersistence.listMessagesForDay(
+            conversationOwnerKey=conversationOwnerKey,
+            dayStart=dayStart,
+            dayEnd=dayEnd,
+            limit=30,
+        )
+        turns = [
+            {
+                "turnId": row.turnId or "",
+                "traceId": row.traceId or "",
+                "userRequest": row.userRequest,
+                "modelAnswer": row.modelAnswer,
+                "createdAt": row.createdAt.isoformat(),
+            }
+            for row in rows
+        ]
+        logger.info(
+            "history listed ownerKeyPrefix=%s turns=%d",
+            conversationOwnerKey.split(":", maxsplit=1)[0],
+            len(turns),
+        )
+        return {"turns": turns}
+
+    async def execute(self, payload: dict[str, Any]) -> dict[str, Any]:
+        message = payload["message"]
+        clientUserLabel, conversationOwnerKey, identity = self._clientConversationAndIdentity(payload)
+
+        logger.info("request received userId=%s messageLen=%d", clientUserLabel, len(message))
 
         routerModel = self.routerModel or _UnavailableRouterModel()
         knowledgeAgent = self.knowledgeAgent or KnowledgeAgentMock()
         supportAgent = self.supportAgent or SupportAgentMock()
+        swarmKnowledgeAgent = self.swarmKnowledgeAgent or SwarmKnowledgeAgentMock()
         traceId = str(uuid4())
-
-        identity = None
-        conversationOwnerKey = f"guest:{clientUserLabel}"
-
-        if hasGoogleToken:
-            if self.googleTokenVerifier is None or self.userMessagePersistence is None:
-                raise PersistencyUnavailableError(
-                    "Google-authenticated messages require a configured token verifier and "
-                    "user-message persistence (SESSION_DATABASE_URL)."
-                )
-            identity = self.googleTokenVerifier.verifyIdToken(googleIdTokenRaw)
-            conversationOwnerKey = f"google:{identity.subject}"
 
         contextualMessage = message
         if self.userMessagePersistence is not None:
@@ -72,26 +118,84 @@ class MessageUseCase(MessageUseCasePort):
                 isGoogle=identity is not None,
             )
 
-        decision = routerModel.decideRoute(contextualMessage)
-        logger.info(
-            "routing decision route=%s model=%s degraded=%s traceId=%s",
-            decision.route,
-            decision.usedModel,
-            decision.degraded,
-            traceId,
-        )
+        blockedByInput = False
+        decision: RouterDecision | None = None
+        reply: str | None = None
+        agentInvoked = False
 
-        if decision.reply:
-            reply = decision.reply
-            logger.info("router static reply used traceId=%s", traceId)
-        else:
-            handlerByRoute: dict[str, AgentHandlerPort] = {
-                "knowledge": knowledgeAgent,
-                "support": supportAgent,
-            }
-            selectedHandler = handlerByRoute.get(decision.route, supportAgent)
-            logger.info("dispatching agent=%s traceId=%s", decision.route, traceId)
-            reply = selectedHandler.handleMessage(contextualMessage)
+        if self.messageGuardrails is not None:
+            inputVerdict = self.messageGuardrails.evaluateInput(
+                contextualMessage,
+                conversationOwnerKey=conversationOwnerKey,
+                clientUserLabel=clientUserLabel,
+                hasGoogleIdentity=identity is not None,
+            )
+            logger.info(
+                "guardrail input outcome=%s audit=%s traceId=%s",
+                "allowed" if inputVerdict.allowed else "blocked",
+                inputVerdict.auditCode,
+                traceId,
+            )
+            if not inputVerdict.allowed:
+                blockedByInput = True
+                reply = (inputVerdict.reply or _INPUT_GUARD_FALLBACK_REPLY).strip() or _INPUT_GUARD_FALLBACK_REPLY
+                decision = RouterDecision(
+                    route="knowledge",
+                    rationale=f"guardrail:{inputVerdict.auditCode}",
+                    usedModel=None,
+                    degraded=inputVerdict.degraded,
+                    reply=None,
+                )
+            elif inputVerdict.rewrittenMessage is not None:
+                contextualMessage = inputVerdict.rewrittenMessage
+
+        if not blockedByInput:
+            decision = routerModel.decideRoute(contextualMessage)
+            logger.info(
+                "routing decision route=%s model=%s degraded=%s traceId=%s",
+                decision.route,
+                decision.usedModel,
+                decision.degraded,
+                traceId,
+            )
+
+            if decision.reply:
+                reply = decision.reply
+                logger.info("router static reply used traceId=%s", traceId)
+            else:
+                agentInvoked = True
+                routed = decision.route
+                logger.info("dispatching agent=%s traceId=%s", routed, traceId)
+                if routed == "knowledge":
+                    reply = knowledgeAgent.handleMessage(contextualMessage)
+                elif routed == "swarm":
+                    reply = swarmKnowledgeAgent.handleMessage(contextualMessage)
+                else:
+                    token = supportConversationOwnerKeyContext.set(conversationOwnerKey)
+                    try:
+                        reply = supportAgent.handleMessage(contextualMessage)
+                    finally:
+                        supportConversationOwnerKeyContext.reset(token)
+
+        assert decision is not None
+        assert reply is not None
+
+        outputDegradedExtra = False
+        if self.messageGuardrails is not None:
+            outputVerdict = self.messageGuardrails.evaluateOutput(
+                reply,
+                route=decision.route,
+                conversationOwnerKey=conversationOwnerKey,
+            )
+            logger.info(
+                "guardrail output outcome=%s audit=%s traceId=%s",
+                "allowed" if outputVerdict.allowed else "blocked",
+                outputVerdict.auditCode,
+                traceId,
+            )
+            if not outputVerdict.allowed and outputVerdict.reply:
+                reply = outputVerdict.reply.strip() or reply
+                outputDegradedExtra = outputVerdict.degraded
 
         if self.userMessagePersistence is not None:
             self.userMessagePersistence.saveMessageTurn(
@@ -105,10 +209,31 @@ class MessageUseCase(MessageUseCasePort):
             )
             logger.info("turn persisted traceId=%s", traceId)
 
+        envelopeDegraded = bool(decision.degraded or outputDegradedExtra)
+        if blockedByInput:
+            reply_source = "guardrail"
+            agent_model: str | None = None
+        elif not agentInvoked:
+            reply_source = "router"
+            agent_model = None
+        elif decision.route == "knowledge":
+            reply_source = "knowledge"
+            agent_model = self.knowledgeModelLabel
+        elif decision.route == "swarm":
+            reply_source = "swarm"
+            agent_model = self.swarmKnowledgeLabel
+        else:
+            reply_source = "support"
+            agent_model = self.supportModelLabel
+
         return {
-            "status": "degraded" if decision.degraded else "ok",
+            "status": "degraded" if envelopeDegraded else "ok",
             "reply": reply,
             "traceId": traceId,
+            "route": decision.route,
+            "routerModel": decision.usedModel,
+            "agentModel": agent_model,
+            "replySource": reply_source,
         }
 
 
@@ -136,13 +261,15 @@ def _buildMessageWithDailyContext(
     recent = history[-maxTurns:]
     contextLines: list[str] = []
     for index, turn in enumerate(recent, start=1):
-        contextLines.append(f"{index}. user: {turn.userRequest}")
-        contextLines.append(f"   assistant: {turn.modelAnswer}")
+        tid = turn.traceId if turn.traceId else "-"
+        tuid = turn.turnId if turn.turnId else "-"
+        contextLines.append(f"{index}. traceId={tid} turnId={tuid}")
+        contextLines.append(f"   usuário: {turn.userRequest}")
+        contextLines.append(f"   assistente: {turn.modelAnswer}")
     contextBlock = "\n".join(contextLines)
-    qualifier = "authenticated user" if isGoogle else "same client user identity"
+    qualifier = "usuário autenticado" if isGoogle else "mesma identidade de usuário convidado"
     return (
-        f"Conversation history from today ({qualifier}):\n"
-        f"{contextBlock}\n\n"
-        "Current user message:\n"
-        f"{message}"
+        f"Histórico da conversa de hoje ({qualifier}):\n"
+        f"{contextBlock}"
+        f"{FULL_CURRENT_USER_MESSAGE_LEADER}{message}"
     )
