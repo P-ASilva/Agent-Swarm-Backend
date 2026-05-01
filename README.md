@@ -1,51 +1,105 @@
-# Agent-Swarm-Backend
-Hexagonal Agent Swarm made to simulate a production ready setup. Part of the Cloudwalk challenge.
+# Agent Swarm Backend
 
-## Rough Draft
+Backend **InfinitePay Agent Swarm** em arquitetura hexagonal (ports & adapters): um único endpoint de mensagens orquestra **roteamento**, **agente de conhecimento (RAG + busca web opcional)** e **agente de suporte (ferramentas sobre Postgres de sessão)**, com persistência de turnos, identidade Google opcional e **guardrails** configuráveis.
 
-### Infrastructure Flowchart
+## Visão da arquitetura
 
 ```mermaid
 flowchart TD
-    Client[Client / Consumer] --> API[FastAPI Inbound Adapter]
-    API --> UC[Application Use Case: process_message]
-    UC --> Router[RouterAgent]
-
-    Router --> Adapter[Agent Adapter]
-    Adapter -->|Product or company question| Knowledge[KnowledgeAgent]
-    Adapter -->|Support or account issue| Support[SupportAgent]
-
-    Knowledge --> KB[(RAG Knowledge Store)]
-    Knowledge --> WEB[Web Search Adapter]
-    Support --> SupportSystems[(Support Systems)]
-
+  Client[Cliente HTTP] --> API[FastAPI apiRouter]
+  API --> UC[MessageUseCase]
+  UC --> GR[MessageGuardrailsPort opcional]
+  GR --> R[RouterAgent]
+  R -->|knowledge| K[KnowledgeAgent]
+  R -->|support| S[SupportAgent]
+  K --> RET[PgvectorKnowledgeRetriever]
+  K --> ING[KnowledgeIngestionToolAdapter]
+  K --> WEB[OpenAiWebSearchAdapter opcional]
+  S --> EX[SupportOperationsExecutor]
+  EX --> PERM[UserMessagePersistenceAdapter]
+  UC --> PERM
+  RET --> RAG[(Postgres pgvector)]
+  PERM --> SESS[(Postgres sessão)]
 ```
 
-### Brief technical and route overview
+- **Domínio** (`app/domain/`): modelos imutáveis, ports, erros — sem dependência de frameworks.
+- **Aplicação** (`app/application/`): `MessageUseCase`, agentes, executor de operações de suporte.
+- **Adaptadores** (`app/adapters/`): HTTP inbound, OpenAI, Google, Postgres.
+- **Infra** (`app/infra/rag_pipeline/`): fetch, chunk, embed, CLI de migração/ingestão/consulta.
 
-This project follows a hexagonal architecture where FastAPI is only an inbound adapter. The API layer validates payloads and forwards work to the application use case (`process_message`), while routing logic and agent behavior stay inside the core.
+## Fluxo de uma mensagem (`POST /messages`)
 
-The `RouterAgent` orchestrates specialized agents:
-- `KnowledgeAgent` handles product/company queries using RAG and optional web search.
-- `SupportAgent` handles support/account flows through the shared agent adapter.
+1. Validação do JSON (`message`, `userId`, `googleIdToken` opcional).
+2. Se houver token Google: verificação e chave de conversa `google:<subject>`; senão `guest:<userId>`.
+3. Carregamento do histórico do dia (mesma chave) e montagem do texto contextual (`Histórico…` + `Mensagem atual do usuário`).
+4. **Guardrails de entrada** (se `GUARDRAILS_MODE=rules`): bloqueio, truncagem ou seguir.
+5. **RouterAgent** → rota `knowledge` ou `support` (ou resposta estática se roteador degradado).
+6. Agente especializado; no suporte, `SupportOperationsExecutor` aplica `profile_patch` / `delete_turns` / `noop` no escopo da chave.
+7. **Guardrails de saída** (mesmo port, se configurado).
+8. Persistência do turno (`user_request`, `model_answer`, rota, `trace_id`, etc.).
+9. Resposta: `{ "status": "ok"|"degraded", "reply": "…", "traceId": "<uuid>" }`.
 
-KnowledgeAgent behavior now supports two modes through the same hexagonal pipeline:
-- **Knowledge answer mode**: retrieves grounded chunks from pgvector and answers with source-aware context.
-- **Context update mode**: accepts direct URL add requests (structured tool call or natural-language request) and ingests the URL into the RAG store.
+## Agentes
 
-Knowledge answer generation now uses a dedicated model configuration independent from routing:
-- `ROUTER_MODEL`: decides which agent route handles the message.
-- `KNOWLEDGE_MODEL`: formats grounded knowledge answers from retrieved RAG chunks.
+| Agente | Função |
+|--------|--------|
+| **RouterAgent** | Classifica a mensagem em `knowledge` ou `support` via LLM (JSON); em falha parsing/ modelo, degrada com resposta segura. |
+| **KnowledgeAgent** | RAG (pgvector), ingestão opcional por URL, resposta fundamentada; se configurado, **busca web** (OpenAI Responses API) quando RAG fraco ou sem trechos. |
+| **SupportAgent** | LLM em JSON (`assistant_reply` + `operations`): ferramentas **profile_patch**, **delete_turns** (escopos `all`, `by_trace_ids`, `by_turn_ids`), **noop**. Dados em `conversation_profiles` e `user_message_turns`. |
 
-Planned HTTP routes:
-- `POST /messages`: accepts `{ "message": "<text>", "userId": "<id>", "googleIdToken": "<optional>" }` and returns a normalized JSON payload with `reply`, `traceId`, and `status`; every turn persists `user_request` and `model_answer` (plus routed agent labels and timestamps) keyed by guest user label or authenticated Google subject.
-- `GET /health`: returns service health status for operational checks.
+Comunicação entre agentes: **chamadas síncronas** no `MessageUseCase` (sem fila).
 
-### Docker setup
+## API HTTP
 
-Compose starts **Postgres**, **session Postgres**, and the **API** only. Applying RAG DDL and **loading seed chunks** is a **separate one-shot** invoked with the bundled merge file.
+### `GET /health`
 
-**First deploy (fresh `postgres_data` volume or empty RAG index):**
+Resposta: `{ "status": "ok" }`.
+
+### `POST /messages`
+
+**Corpo (JSON):**
+
+```json
+{
+  "message": "texto não vazio",
+  "userId": "identificador estável do cliente",
+  "googleIdToken": "opcional"
+}
+```
+
+**Resposta 200:**
+
+```json
+{
+  "status": "ok",
+  "reply": "texto para o usuário",
+  "traceId": "uuid"
+}
+```
+
+`status` pode ser `degraded` quando o roteador ou guardrails marcam degradação.
+
+**Erros comuns:** `422` (validação), `401` (token Google inválido), `503` / `504` (dependências).
+
+OpenAPI: `/docs`, `/redoc`.
+
+## Variáveis de ambiente (resumo)
+
+| Variável | Uso |
+|----------|-----|
+| `OPENAI_API_KEY` | OpenAI (chat, embeddings, web search). |
+| `DATABASE_URL` | Postgres **RAG** (pgvector). |
+| `SESSION_DATABASE_URL` | Postgres **sessão** (turnos, perfis). |
+| `ROUTER_MODEL`, `KNOWLEDGE_MODEL`, `SUPPORT_MODEL`, `WEB_SEARCH_MODEL` | Modelos por etapa (defaults no código/Compose). |
+| `GOOGLE_CLIENT_ID` | Habilita verificação de `googleIdToken`. |
+| `EMBEDDING_PROVIDER` | `openai` ou `deterministic` (testes). |
+| `GUARDRAILS_MODE` | `off` ou `rules`; com `rules`, ver `GUARDRAILS_INPUT_BLOCK_SUBSTRINGS`, `GUARDRAILS_OUTPUT_BLOCK_SUBSTRINGS`, `GUARDRAILS_MAX_INPUT_CHARS`. |
+
+Para integração local com DB de teste: `RAG_TEST_DATABASE_URL`, `SESSION_TEST_DATABASE_URL` (opcional; sessão pode usar default local — ver testes).
+
+## Docker
+
+**Primeiro deploy** (índice RAG vazio):
 
 ```bash
 docker compose up -d postgres session_postgres
@@ -53,146 +107,85 @@ docker compose -f docker-compose.yml -f docker-compose.rag-seed.yml run --rm rag
 docker compose up -d
 ```
 
-Repeat **`rag_seed`** after wiping the Postgres volume or whenever you want to reload `RAG_SEED_URLS_PATH` (see **`docker-compose.rag-seed.yml`**). To pass extra CLI flags (e.g. **`--crawl-version`**), either run **`migrate`** / **`ingest`** manually or adjust the **`command:`** block in **`docker-compose.rag-seed.yml`**.
-
-Alternatively run **`python -m app.infra.rag_pipeline.cli migrate`** then **`python -m app.infra.rag_pipeline.cli ingest`** locally (venv) against **`DATABASE_URL`** — same pipeline as **`rag_seed`**.
-
-**Container image CMD** applies **RAG + user-message SQL migrations only** (no ingestion). Plain **`docker run`** without Compose still needs Postgres on the **`DATABASE_URL`** host and **`rag_seed`** (or **`migrate`** + **`ingest`**) executed once before relying on **`KnowledgeAgent`**.
-
-Run with Docker Compose (after seed when needed):
+**Dia a dia:**
 
 ```bash
 docker compose up --build
 ```
 
-Runtime environment split:
-- `DATABASE_URL`: RAG Postgres database.
-- `SESSION_DATABASE_URL`: dedicated Postgres volume for authenticated `app_users` and per-turn `user_message_turns`.
-- `GOOGLE_CLIENT_ID`: audience expected when validating Google ID tokens for authenticated `/messages` calls.
+- API: `http://localhost:8000`
+- Imagem aplica migrações RAG + sessão no startup; **ingestão em massa** não roda no CMD — use `rag_seed` ou CLI (abaixo).
 
-Compose mounts named volumes **`postgres_data`** (RAG) and **`session_postgres_data`** (user messages).
+Apenas Docker (sem Compose completo): é necessário Postgres acessível em `DATABASE_URL` / `SESSION_DATABASE_URL` e pipeline RAG preparado antes de depender do Knowledge.
 
-Run with Docker only:
+## Pipeline RAG
 
-```bash
-docker build -t agent-swarm-backend .
-docker run --rm -p 8000:8000 agent-swarm-backend
-```
-
-After startup:
-- API base URL: `http://localhost:8000`
-- Health endpoint: `http://localhost:8000/health`
-- OpenAPI docs: `http://localhost:8000/docs`
-
-### RAG pipeline (Postgres + pgvector)
-
-This repository includes a standalone RAG ingestion pipeline that is intentionally separate from API startup.
-It stores chunked, versioned knowledge data in PostgreSQL with pgvector support.
-
-RAG storage service:
-
-```bash
-docker compose up -d postgres
-```
-
-Session Postgres (user/message persistence):
-
-```bash
-docker compose up -d session_postgres
-```
-
-User message persistence model:
-- `app_users`: Google profile rows keyed by Google subject (`google_subject`).
-- `user_message_turns`: stores every exchange with `conversation_owner_key` (`guest:<userId>` or `google:<subject>`), `client_user_label`, `user_request`, `model_answer`, `routed_agent`, `trace_id`, timestamps, and optionally `user_id`.
-- Sessions are a UI concept only—there is **no finalize endpoint**.
-
-Each `/messages` call loads persisted same-day turns for the same logical user (guest label or authenticated subject) before routing.
-
-Run migrations:
+- **Manifesto de URLs:** `app/infra/rag_pipeline/seedUrls.json` (páginas InfinitePay do desafio).
+- **CLI** (na raiz do repo, com venv e `DATABASE_URL`):
 
 ```bash
 python -m app.infra.rag_pipeline.cli migrate
+python -m app.infra.rag_pipeline.cli ingest --crawl-version <rótulo>
+python -m app.infra.rag_pipeline.cli add-url --url "https://..." --crawl-version <rótulo>
+python -m app.infra.rag_pipeline.cli query --query "..." --top-k 3 --pretty
+```
+
+- **Sessão / mensagens:**
+
+```bash
 python -m message_persistence.cli migrate
 ```
 
-Seed URL manifest lives at `app/infra/rag_pipeline/seedUrls.json`.
+## Persistência de sessão
 
-Run ingestion from the JSON base URLs:
+- **`user_message_turns`:** uma linha por turno; `conversation_owner_key`, `trace_id`, `turn_id`, texto usuário/assistente, rota.
+- **`conversation_profiles`:** nome e metadados por chave de conversa (ferramentas de suporte).
+- **`app_users`:** utilizadores Google (quando autenticado).
 
-```bash
-python -m app.infra.rag_pipeline.cli ingest --crawl-version 20260429
-```
+## Estratégia de testes
 
-Rerun/reindex pipeline:
+- **`tests/routes/`:** contratos HTTP com `TestClient` e doubles in-process (sem DB, sem OpenAI) — health, envelope de `/messages`, rota support, `422`.
+- **`tests/integration/`:** orquestração e falhas de API (`test_api_orchestration.py`, `test_api_failure_paths.py`); persistência Postgres real quando variáveis de ambiente estão definidas; RAG opcional com `RAG_TEST_DATABASE_URL`.
+- **Unitários:** parsers (roteador, suporte, web), guardrails, executor de suporte, agente de conhecimento com doubles.
+- **Smoke (`tests/smoke/`):** scripts contra API/container real (Docker, OpenAI conforme script).
 
-```bash
-python -m app.infra.rag_pipeline.cli reindex --crawl-version 20260429-r2
-```
-
-Ingest one specific URL (research-agent style):
-
-```bash
-python -m app.infra.rag_pipeline.cli add-url --url "https://www.infinitepay.io/pix" --crawl-version 20260429-r3
-```
-
-Structured tool-call equivalent (future agent integration):
+### Comandos
 
 ```bash
-python -m app.infra.rag_pipeline.cli add-url --url "https://example.com/new-context"
+pip install -r requirements.txt
+pytest tests/routes -q
+pytest tests/integration -q
+pytest -q
 ```
 
-Run a retrieval check:
+Testes de integração marcados com `@pytest.mark.integration` que exigem DB podem ser filtrados com `-m integration`.
 
-```bash
-python -m app.infra.rag_pipeline.cli query --query "phone as a card machine" --top-k 3 --pretty
-```
+## Scripts smoke (API / RAG / suporte)
 
-Compose RAG jobs (optional):
+| Script | Objetivo |
+|--------|----------|
+| `tests/smoke/smokeDocker.sh` / `.ps1` | `/health`, `/messages`, payload inválido → 422 |
+| `tests/smoke/smokeKnowledgeAgent.sh` / `.ps1` | Knowledge com rota forçada + RAG em container |
+| `tests/smoke/smokeRagPipeline.sh` / `.ps1` | CLI RAG migrate / ingest / query |
+| `tests/smoke/smokeWebSearch.sh` / `.ps1` | Pergunta que pode acionar busca web |
+| `tests/smoke/smokeSupportProfilePatch.sh` / `.ps1` | Router real → suporte → perfil |
+| `tests/smoke/smokeSupportDeleteTurns.sh` / `.ps1` | Router real → suporte → delete_turns |
+| `tests/smoke/smokeOpenAiConnection.py` | Chave OpenAI válida |
 
-- **First seed / empty index** — merge **`docker-compose.rag-seed.yml`** and **`run rag_seed`** (`migrate` + default `ingest` from the manifest). Matches the [Docker setup](#docker-setup) first-deploy flow.
-- **Flexible one-off** — **`docker compose --profile rag run --rm rag_ingest`** (sets **`RAG_PIPELINE_COMMAND`** / **`RAG_PIPELINE_ARGS`**):
+Defina `BASE_URL` se a API não estiver em `http://localhost:8000`.
 
-```bash
-# Bulk ingest with explicit crawl label (example)
-docker compose --profile rag run --rm \
-  -e RAG_PIPELINE_COMMAND=ingest \
-  -e RAG_PIPELINE_ARGS="--crawl-version 20260429" \
-  rag_ingest
+## Uso de LLM e ferramentas
 
-# Shorthand: default is also `ingest`
-docker compose --profile rag run --rm rag_ingest
+- **Roteamento e suporte:** `OpenAiChatAdapter` (chat completions, JSON).
+- **Conhecimento:** mesmo adapter para formatar resposta JSON a partir de trechos RAG; opcionalmente **web search** via API de respostas OpenAI.
+- **Embeddings RAG:** configurável (`text-embedding-3-small` em produção típica).
+- **Suporte:** o modelo devolve JSON estruturado; o backend **não** envia HTTP externo dentro do agente — só o executor fala com Postgres.
 
-# One URL
-docker compose --profile rag run --rm \
-  -e RAG_PIPELINE_COMMAND=add-url \
-  -e RAG_PIPELINE_ARGS="--url https://www.infinitepay.io/pix --crawl-version 20260429-rurl" \
-  rag_ingest
-```
+## Documentação adicional
 
-### RAG smoke routines
+- **`CHANGELOG.md`:** histórico de mudanças.
+- **`app/README.md`:** atalhos para validação manual, PowerShell e CLI.
 
-PowerShell:
+## Repositório e licença
 
-```powershell
-powershell -ExecutionPolicy Bypass -File tests/smoke/smokeRagPipeline.ps1
-```
-
-Bash:
-
-```bash
-bash tests/smoke/smokeRagPipeline.sh
-```
-
-KnowledgeAgent smoke routines:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File tests/smoke/smokeKnowledgeAgent.ps1
-```
-
-```bash
-bash tests/smoke/smokeKnowledgeAgent.sh
-```
-
-## (Disclaimer)
-
-This is a preliminary plan, not indicative of current or future implementation formats.
+Projeto de desafio técnico (Cloudwalk / InfinitePay). Ajuste políticas de commit/CI conforme a equipa.

@@ -1,147 +1,76 @@
-# API Manual Checks
+# Manual de verificação da API
 
-## Run the API locally (no Docker) only after applying both migration sets to the databases pointed to by `DATABASE_URL` and `SESSION_DATABASE_URL`; otherwise you will see retrieval `UndefinedTable` for RAG and persistence errors.
+Guia rápido para subir a API localmente e validar endpoints. O panorama do sistema, Docker, RAG e testes está no [**README na raiz do repositório**](../README.md).
 
-From the repository root, apply migrations once per environment:
+## Pré-requisitos
+
+Com `DATABASE_URL` e `SESSION_DATABASE_URL` apontando para instâncias com schema aplicado:
 
 ```powershell
-.\.venv\Scripts\python -m app.infra.rag_pipeline.cli migrate
-.\.venv\Scripts\python -m message_persistence.cli migrate
+python -m app.infra.rag_pipeline.cli migrate
+python -m message_persistence.cli migrate
 ```
 
-Then start the server:
+## Subir o servidor (sem Docker)
 
 ```powershell
-.\.venv\Scripts\python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-## URLs for manual validation
+## URLs úteis
 
-- Health: `http://127.0.0.1:8000/health`
-- Swagger UI: `http://127.0.0.1:8000/docs`
-- ReDoc: `http://127.0.0.1:8000/redoc`
-- OpenAPI JSON: `http://127.0.0.1:8000/openapi.json`
-- Messages endpoint: `http://127.0.0.1:8000/messages`
+| Recurso | URL |
+|---------|-----|
+| Saúde | `http://127.0.0.1:8000/health` |
+| Swagger | `http://127.0.0.1:8000/docs` |
+| ReDoc | `http://127.0.0.1:8000/redoc` |
+| Mensagens | `POST http://127.0.0.1:8000/messages` |
 
-## Manual API checks (PowerShell)
+## Exemplos PowerShell
 
 ```powershell
-# Health
 Invoke-RestMethod -Uri http://127.0.0.1:8000/health
 
-# Valid message payload
 Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/messages `
   -ContentType "application/json" `
-  -Body '{"message":"How can I use my phone as a card machine?","userId":"client789"}'
+  -Body '{"message":"Como usar o celular como maquininha?","userId":"client789"}'
 
-# Authenticated payload (loads same-day history and links app_users rows)
 Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/messages `
   -ContentType "application/json" `
-  -Body '{"message":"Continue from my previous requests","userId":"client789","googleIdToken":"<google-id-token>"}'
-
-# Invalid payload should return 422
-try {
-  Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/messages `
-    -ContentType "application/json" `
-    -Body '{}'
-} catch {
-  $_.Exception.Response.StatusCode.value__
-}
+  -Body '{"message":"Continuar do histórico de hoje","userId":"client789","googleIdToken":"<token>"}'
 ```
 
-## Manual test commands
+Payload vazio ou campos obrigatórios em falta → **422**.
 
-From the repository root:
+## Testes automatizados
+
+Na raiz do repositório:
 
 ```powershell
-# API smoke checks (PowerShell script)
+pytest tests/routes -q
+pytest tests/integration -q
+pytest -q
+```
+
+Smoke contra stack em execução:
+
+```powershell
 powershell -ExecutionPolicy Bypass -File tests/smoke/smokeDocker.ps1
-
-# Integration tests
-.\.venv\Scripts\python -m pytest tests/integration -q
 ```
 
-Optional bash smoke script (targets a running API container):
-
-```bash
-bash tests/smoke/smokeDocker.sh
-```
-
-## RAG pipeline operations
-
-RAG storage uses Postgres + pgvector and runs separately from the HTTP API lifecycle.
+## Pipeline RAG (resumo)
 
 ```powershell
-# Start pgvector database
 docker compose up -d postgres
-
-# Start session Postgres (user/message persistence)
-docker compose up -d session_postgres
-
-# Apply RAG schema migrations
-.\.venv\Scripts\python -m app.infra.rag_pipeline.cli migrate
-
-# Apply user/message persistence migrations
-.\.venv\Scripts\python -m message_persistence.cli migrate
-
-# Ingest from JSON base URL manifest
-.\.venv\Scripts\python -m app.infra.rag_pipeline.cli ingest --crawl-version 20260429
-
-# Reindex data when chunking/model/schema changes
-.\.venv\Scripts\python -m app.infra.rag_pipeline.cli reindex --crawl-version 20260429-r2
-
-# Ingest one URL directly (research-agent trigger flow)
-.\.venv\Scripts\python -m app.infra.rag_pipeline.cli add-url --url "https://www.infinitepay.io/pix" --crawl-version 20260429-r3
-
-# Retrieval verification query
-.\.venv\Scripts\python -m app.infra.rag_pipeline.cli query --query "tap to pay" --top-k 3 --pretty
+python -m app.infra.rag_pipeline.cli migrate
+python -m app.infra.rag_pipeline.cli ingest --crawl-version 20260429
+python -m app.infra.rag_pipeline.cli query --query "pix parcelado" --top-k 3 --pretty
 ```
 
-KnowledgeAgent supports both direct trigger styles:
-- structured JSON message action (e.g. `{"tool":"add_url_to_context","url":"https://..."}`),
-- natural-language request containing an URL and add-to-context intent.
+O `KnowledgeAgent` pode disparar ingestão por mensagem com URL + intenção de adicionar contexto, ou JSON estruturado com `add_url` / ferramenta equivalente (ver código em `knowledgeAgent.py`).
 
-Model split configuration:
-- `ROUTER_MODEL` controls route selection.
-- `KNOWLEDGE_MODEL` controls grounded answer formatting for knowledge replies.
-- `GOOGLE_CLIENT_ID` controls accepted Google token audience for authenticated `/messages` persistence.
+## Variáveis relevantes
 
-RAG smoke scripts:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File tests/smoke/smokeRagPipeline.ps1
-```
-
-```bash
-bash tests/smoke/smokeRagPipeline.sh
-```
-
-## Compose-triggered RAG modes
-
-For a **first bulk load** (empty RAG index), merge **`docker-compose.rag-seed.yml`** and run **`rag_seed`** (see root **`README.md`**, Docker setup).
-
-For **ad hoc** ingest or **`add-url`**, enable **`--profile rag`** — both run via **`rag_ingest`** (same pipeline as the CLI):
-
-```powershell
-# DB setup seed from app/infra/rag_pipeline/seedUrls.json
-docker compose --profile rag run --rm `
-  -e RAG_PIPELINE_COMMAND=ingest `
-  -e RAG_PIPELINE_ARGS="--crawl-version 20260429" `
-  rag_ingest
-
-# Research-agent direct URL add
-docker compose --profile rag run --rm `
-  -e RAG_PIPELINE_COMMAND=add-url `
-  -e RAG_PIPELINE_ARGS="--url https://www.infinitepay.io/pix --crawl-version 20260429-rurl" `
-  rag_ingest
-```
-
-KnowledgeAgent smoke:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File tests/smoke/smokeKnowledgeAgent.ps1
-```
-
-```bash
-bash tests/smoke/smokeKnowledgeAgent.sh
-```
+- `ROUTER_MODEL`, `KNOWLEDGE_MODEL`, `SUPPORT_MODEL`, `WEB_SEARCH_MODEL`
+- `GUARDRAILS_MODE` e prefixos `GUARDRAILS_*` (regras de entrada/saída)
+- `GOOGLE_CLIENT_ID` para `googleIdToken` em `/messages`
