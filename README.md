@@ -28,7 +28,7 @@ flowchart TD
 
   K --> PERM[UserPersistenceAdapter]
   S --> PERM
-  K --> PERM
+  SW --> PERM
 
   PERM --> SESS[(Postgres sessão)]
 ```
