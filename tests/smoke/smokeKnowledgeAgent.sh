@@ -11,7 +11,7 @@ docker compose --profile rag run --build --rm rag_ingest python - <<'PY'
 from fastapi.testclient import TestClient
 
 from app.adapters.outbound.postgres import KnowledgeIngestionToolAdapter, PgvectorKnowledgeRetriever
-from app.application.agents import KnowledgeAgent, SupportAgentMock
+from app.application.agents import KnowledgeAgent
 from app.application.usecase import MessageUseCase
 from app.domain.models import RouterDecision
 from app.main import createApp
@@ -26,6 +26,11 @@ class ForcedKnowledgeRouter:
         return RouterDecision(route="knowledge", rationale="forced-knowledge")
 
 
+class UnusedRouteAgent:
+    def handleMessage(self, message: str) -> str:
+        raise AssertionError("support/swarm should not run in knowledge smoke")
+
+
 store = PgvectorStore()
 embedding = DeterministicEmbeddingProvider(embeddingDim=1536)
 service = RagIngestionService(store=store, embeddingProvider=embedding, loader=WebContentLoader())
@@ -37,9 +42,10 @@ knowledge_agent = KnowledgeAgent(
 )
 app = createApp(
     messageUseCase=MessageUseCase(
-        routerModel=ForcedKnowledgeRouter(),
         knowledgeAgent=knowledge_agent,
-        supportAgent=SupportAgentMock(),
+        supportAgent=UnusedRouteAgent(),
+        swarmKnowledgeAgent=UnusedRouteAgent(),
+        routerModel=ForcedKnowledgeRouter(),
     )
 )
 client = TestClient(app)

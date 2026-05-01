@@ -26,10 +26,22 @@ class _NaoChamarConhecimento:
         raise AssertionError("agente de conhecimento não deve ser chamado quando o roteador define reply")
 
 
+class _EcoSuporteOrchestration:
+    def handleMessage(self, message: str) -> str:
+        return f"suporte:{message[:24]}"
+
+
+class _EcoSwarmOrchestration:
+    def handleMessage(self, message: str) -> str:
+        return f"swarm:{message[:24]}"
+
+
 def test_mensagens_usa_reply_estatico_do_roteador_sem_agente():
     use_case = MessageUseCase(
-        routerModel=_StaticDegradedRouter(),
         knowledgeAgent=_NaoChamarConhecimento(),
+        supportAgent=_EcoSuporteOrchestration(),
+        swarmKnowledgeAgent=_EcoSwarmOrchestration(),
+        routerModel=_StaticDegradedRouter(),
     )
     client = TestClient(createApp(messageUseCase=use_case))
     response = client.post(
@@ -63,8 +75,10 @@ class _EcoAgente:
 def test_mensagens_encaminha_contexto_ao_roteador():
     router = _RecordingRouter()
     use_case = MessageUseCase(
-        routerModel=router,
         knowledgeAgent=_EcoAgente(),
+        supportAgent=_EcoSuporteOrchestration(),
+        swarmKnowledgeAgent=_EcoSwarmOrchestration(),
+        routerModel=router,
     )
     client = TestClient(createApp(messageUseCase=use_case))
     texto = "Pergunta sobre maquininha Smart"

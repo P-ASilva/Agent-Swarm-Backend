@@ -40,6 +40,16 @@ class InspectingAgent:
         return "ACK"
 
 
+class UnreachableKnowledgeAgent:
+    def handleMessage(self, message: str) -> str:
+        raise AssertionError("knowledge agent should not run in this test")
+
+
+class UnreachableSwarmAgent:
+    def handleMessage(self, message: str) -> str:
+        raise AssertionError("swarm agent should not run in this test")
+
+
 @pytest.mark.integration
 def testGoogleAuthenticatedMessagesPersistAndLoadDailyContext():
     databaseUrl = resolve_session_integration_database_url()
@@ -58,8 +68,10 @@ def testGoogleAuthenticatedMessagesPersistAndLoadDailyContext():
 
     agent = InspectingAgent()
     useCase = MessageUseCase(
-        routerModel=ForcedSupportRouter(),
+        knowledgeAgent=UnreachableKnowledgeAgent(),
         supportAgent=agent,
+        swarmKnowledgeAgent=UnreachableSwarmAgent(),
+        routerModel=ForcedSupportRouter(),
         googleTokenVerifier=StubGoogleTokenVerifier(),
         userMessagePersistence=UserMessagePersistenceAdapter(databaseUrl=databaseUrl),
     )
@@ -110,8 +122,10 @@ def testGuestMessagesPersistWithoutGoogleToken():
             )
 
     useCase = MessageUseCase(
-        routerModel=ForcedSupportRouter(),
+        knowledgeAgent=UnreachableKnowledgeAgent(),
         supportAgent=InspectingAgent(),
+        swarmKnowledgeAgent=UnreachableSwarmAgent(),
+        routerModel=ForcedSupportRouter(),
         userMessagePersistence=UserMessagePersistenceAdapter(databaseUrl=databaseUrl),
     )
     client = TestClient(createApp(messageUseCase=useCase))
@@ -135,8 +149,10 @@ def testGuestMessagesPersistWithoutGoogleToken():
 @pytest.mark.integration
 def testMessagesRejectInvalidGoogleToken():
     useCase = MessageUseCase(
-        routerModel=ForcedSupportRouter(),
+        knowledgeAgent=UnreachableKnowledgeAgent(),
         supportAgent=InspectingAgent(),
+        swarmKnowledgeAgent=UnreachableSwarmAgent(),
+        routerModel=ForcedSupportRouter(),
         googleTokenVerifier=StubGoogleTokenVerifier(),
         userMessagePersistence=UserMessagePersistenceAdapter(
             databaseUrl=resolve_session_integration_database_url(),

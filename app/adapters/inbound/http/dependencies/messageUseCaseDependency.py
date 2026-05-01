@@ -51,25 +51,26 @@ def getMessageUseCase(request: Request) -> MessageUseCasePort:
     )
     swarmGuideLabel = os.getenv("SWARM_KNOWLEDGE_LABEL", "implementation-guide").strip() or "implementation-guide"
     messageGuardrails = _buildMessageGuardrailsOptional()
+    knowledgeAgent = KnowledgeAgent(
+        retriever=PgvectorKnowledgeRetriever(
+            embeddingProvider=embeddingProvider,
+            store=ragStore,
+        ),
+        ingestionTool=KnowledgeIngestionToolAdapter(
+            ingestionService=ragIngestionService,
+        ),
+        openAiChat=openAiChat,
+        webSearch=webSearch,
+        responseModel=knowledgeModel,
+    )
     useCase = MessageUseCase(
+        knowledgeAgent=knowledgeAgent,
+        supportAgent=supportAgent,
+        swarmKnowledgeAgent=SwarmKnowledgeAgent(),
         routerModel=RouterAgent(openAiChat=openAiChat),
         knowledgeModelLabel=knowledgeModel,
         supportModelLabel=supportModel,
         swarmKnowledgeLabel=swarmGuideLabel,
-        knowledgeAgent=KnowledgeAgent(
-            retriever=PgvectorKnowledgeRetriever(
-                embeddingProvider=embeddingProvider,
-                store=ragStore,
-            ),
-            ingestionTool=KnowledgeIngestionToolAdapter(
-                ingestionService=ragIngestionService,
-            ),
-            openAiChat=openAiChat,
-            webSearch=webSearch,
-            responseModel=knowledgeModel,
-        ),
-        supportAgent=supportAgent,
-        swarmKnowledgeAgent=SwarmKnowledgeAgent(),
         googleTokenVerifier=googleVerifier,
         userMessagePersistence=persistence,
         messageGuardrails=messageGuardrails,

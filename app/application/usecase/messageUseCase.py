@@ -6,7 +6,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
-from app.application.agents import KnowledgeAgentMock, SupportAgentMock, SwarmKnowledgeAgentMock
 from app.application.support_execution_context import supportConversationOwnerKeyContext
 from app.domain.conversationContextMarkers import FULL_CURRENT_USER_MESSAGE_LEADER
 from app.domain.errors import PersistencyUnavailableError
@@ -29,10 +28,10 @@ _INPUT_GUARD_FALLBACK_REPLY = (
 
 @dataclass
 class MessageUseCase(MessageUseCasePort):
+    knowledgeAgent: AgentHandlerPort
+    supportAgent: AgentHandlerPort
+    swarmKnowledgeAgent: AgentHandlerPort
     routerModel: RouterModelPort | None = None
-    knowledgeAgent: AgentHandlerPort | None = None
-    supportAgent: AgentHandlerPort | None = None
-    swarmKnowledgeAgent: AgentHandlerPort | None = None
     googleTokenVerifier: GoogleTokenVerifierPort | None = None
     userMessagePersistence: UserMessagePersistencePort | None = None
     messageGuardrails: MessageGuardrailsPort | None = None
@@ -97,9 +96,6 @@ class MessageUseCase(MessageUseCasePort):
         logger.info("request received userId=%s messageLen=%d", clientUserLabel, len(message))
 
         routerModel = self.routerModel or _UnavailableRouterModel()
-        knowledgeAgent = self.knowledgeAgent or KnowledgeAgentMock()
-        supportAgent = self.supportAgent or SupportAgentMock()
-        swarmKnowledgeAgent = self.swarmKnowledgeAgent or SwarmKnowledgeAgentMock()
         traceId = str(uuid4())
 
         contextualMessage = message
@@ -167,13 +163,13 @@ class MessageUseCase(MessageUseCasePort):
                 routed = decision.route
                 logger.info("dispatching agent=%s traceId=%s", routed, traceId)
                 if routed == "knowledge":
-                    reply = knowledgeAgent.handleMessage(contextualMessage)
+                    reply = self.knowledgeAgent.handleMessage(contextualMessage)
                 elif routed == "swarm":
-                    reply = swarmKnowledgeAgent.handleMessage(contextualMessage)
+                    reply = self.swarmKnowledgeAgent.handleMessage(contextualMessage)
                 else:
                     token = supportConversationOwnerKeyContext.set(conversationOwnerKey)
                     try:
-                        reply = supportAgent.handleMessage(contextualMessage)
+                        reply = self.supportAgent.handleMessage(contextualMessage)
                     finally:
                         supportConversationOwnerKeyContext.reset(token)
 

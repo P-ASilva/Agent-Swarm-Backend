@@ -23,6 +23,16 @@ class EchoKnowledgeAgent:
         return f"réplica:{message}"
 
 
+class EchoSupportAgent:
+    def handleMessage(self, message: str) -> str:
+        return f"suporte:{message[:32]}"
+
+
+class EchoSwarmAgent:
+    def handleMessage(self, message: str) -> str:
+        return f"swarm:{message[:32]}"
+
+
 class BlockInputGuardrailStub:
     def evaluateInput(
         self,
@@ -77,8 +87,10 @@ class RewriteInputGuardrailStub:
 async def test_input_block_skips_router_and_uses_safe_reply():
     router = CountingRouter()
     useCase = MessageUseCase(
-        routerModel=router,
         knowledgeAgent=EchoKnowledgeAgent(),
+        supportAgent=EchoSupportAgent(),
+        swarmKnowledgeAgent=EchoSwarmAgent(),
+        routerModel=router,
         messageGuardrails=BlockInputGuardrailStub(),
     )
     result = await useCase.execute({"message": "hello", "userId": "g1"})
@@ -91,8 +103,10 @@ async def test_input_block_skips_router_and_uses_safe_reply():
 async def test_input_rewrite_passes_altered_text_to_router():
     router = CountingRouter()
     useCase = MessageUseCase(
-        routerModel=router,
         knowledgeAgent=EchoKnowledgeAgent(),
+        supportAgent=EchoSupportAgent(),
+        swarmKnowledgeAgent=EchoSwarmAgent(),
+        routerModel=router,
         messageGuardrails=RewriteInputGuardrailStub(),
     )
     result = await useCase.execute({"message": "hello", "userId": "g2"})
@@ -105,8 +119,10 @@ async def test_input_rewrite_passes_altered_text_to_router():
 async def test_without_guardrails_router_sees_raw_message():
     router = CountingRouter()
     useCase = MessageUseCase(
-        routerModel=router,
         knowledgeAgent=EchoKnowledgeAgent(),
+        supportAgent=EchoSupportAgent(),
+        swarmKnowledgeAgent=EchoSwarmAgent(),
+        routerModel=router,
         messageGuardrails=None,
     )
     result = await useCase.execute({"message": "raw-direct", "userId": "g3"})
@@ -120,8 +136,10 @@ async def test_output_guardrail_replaces_reply():
     router = CountingRouter()
     guard = RuleBasedGuardrailsAdapter(outputBlockedSubstrings=("secret-token",))
     useCase = MessageUseCase(
-        routerModel=router,
         knowledgeAgent=EchoKnowledgeAgent(),
+        supportAgent=EchoSupportAgent(),
+        swarmKnowledgeAgent=EchoSwarmAgent(),
+        routerModel=router,
         messageGuardrails=guard,
     )
     result = await useCase.execute({"message": "x secret-token y", "userId": "g4"})

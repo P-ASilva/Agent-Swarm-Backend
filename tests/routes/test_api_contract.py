@@ -45,7 +45,12 @@ def _make_client(use_case: MessageUseCase) -> TestClient:
 
 
 def test_health_retorna_ok():
-    use_case = MessageUseCase(routerModel=_FixedRouteRouter("knowledge"), knowledgeAgent=_EchoKnowledge())
+    use_case = MessageUseCase(
+        knowledgeAgent=_EchoKnowledge(),
+        supportAgent=_EchoSupport(),
+        swarmKnowledgeAgent=_EchoSwarm(),
+        routerModel=_FixedRouteRouter("knowledge"),
+    )
     client = _make_client(use_case)
     response = client.get("/health")
     assert response.status_code == 200
@@ -54,8 +59,10 @@ def test_health_retorna_ok():
 
 def test_post_messages_200_com_envelope_obrigatorio():
     use_case = MessageUseCase(
-        routerModel=_FixedRouteRouter("knowledge"),
         knowledgeAgent=_EchoKnowledge(),
+        supportAgent=_EchoSupport(),
+        swarmKnowledgeAgent=_EchoSwarm(),
+        routerModel=_FixedRouteRouter("knowledge"),
     )
     client = _make_client(use_case)
     response = client.post(
@@ -71,9 +78,10 @@ def test_post_messages_200_com_envelope_obrigatorio():
 
 def test_post_messages_suporte_quando_rota_support():
     use_case = MessageUseCase(
-        routerModel=_FixedRouteRouter("support"),
         knowledgeAgent=_EchoKnowledge(),
         supportAgent=_EchoSupport(),
+        swarmKnowledgeAgent=_EchoSwarm(),
+        routerModel=_FixedRouteRouter("support"),
     )
     client = _make_client(use_case)
     response = client.post(
@@ -87,10 +95,10 @@ def test_post_messages_suporte_quando_rota_support():
 
 def test_post_messages_swarm_quando_rota_swarm():
     use_case = MessageUseCase(
-        routerModel=_FixedRouteRouter("swarm"),
         knowledgeAgent=_EchoKnowledge(),
         supportAgent=_EchoSupport(),
         swarmKnowledgeAgent=_EchoSwarm(),
+        routerModel=_FixedRouteRouter("swarm"),
         swarmKnowledgeLabel="test-swarm-label",
     )
     client = _make_client(use_case)
@@ -108,8 +116,10 @@ def test_post_messages_swarm_quando_rota_swarm():
 
 def test_post_messages_payload_vazio_retorna_422():
     use_case = MessageUseCase(
-        routerModel=_FixedRouteRouter("knowledge"),
         knowledgeAgent=_EchoKnowledge(),
+        supportAgent=_EchoSupport(),
+        swarmKnowledgeAgent=_EchoSwarm(),
+        routerModel=_FixedRouteRouter("knowledge"),
     )
     client = _make_client(use_case)
     response = client.post("/messages", json={})
@@ -153,8 +163,10 @@ class _HistoryPersistenceStub:
 
 def test_post_messages_history_sem_persistencia_retorna_lista_vazia():
     use_case = MessageUseCase(
-        routerModel=_FixedRouteRouter("knowledge"),
         knowledgeAgent=_EchoKnowledge(),
+        supportAgent=_EchoSupport(),
+        swarmKnowledgeAgent=_EchoSwarm(),
+        routerModel=_FixedRouteRouter("knowledge"),
     )
     client = _make_client(use_case)
     response = client.post(
@@ -178,8 +190,10 @@ def test_post_messages_history_convidado_retorna_turnos():
     ]
     persistence = _HistoryPersistenceStub(rows)
     use_case = MessageUseCase(
-        routerModel=_FixedRouteRouter("knowledge"),
         knowledgeAgent=_EchoKnowledge(),
+        supportAgent=_EchoSupport(),
+        swarmKnowledgeAgent=_EchoSwarm(),
+        routerModel=_FixedRouteRouter("knowledge"),
         userMessagePersistence=persistence,
     )
     client = _make_client(use_case)
@@ -212,8 +226,10 @@ class _ContractGoogleVerifier:
 def test_post_messages_history_google_escopo_correto():
     persistence = _HistoryPersistenceStub([])
     use_case = MessageUseCase(
-        routerModel=_FixedRouteRouter("knowledge"),
         knowledgeAgent=_EchoKnowledge(),
+        supportAgent=_EchoSupport(),
+        swarmKnowledgeAgent=_EchoSwarm(),
+        routerModel=_FixedRouteRouter("knowledge"),
         googleTokenVerifier=_ContractGoogleVerifier(),
         userMessagePersistence=persistence,
     )
@@ -229,8 +245,10 @@ def test_post_messages_history_google_escopo_correto():
 def test_post_messages_history_google_token_invalido_401():
     persistence = _HistoryPersistenceStub([])
     use_case = MessageUseCase(
-        routerModel=_FixedRouteRouter("knowledge"),
         knowledgeAgent=_EchoKnowledge(),
+        supportAgent=_EchoSupport(),
+        swarmKnowledgeAgent=_EchoSwarm(),
+        routerModel=_FixedRouteRouter("knowledge"),
         googleTokenVerifier=_ContractGoogleVerifier(),
         userMessagePersistence=persistence,
     )

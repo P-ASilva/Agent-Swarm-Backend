@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.adapters.outbound.postgres import KnowledgeIngestionToolAdapter
-from app.application.agents import KnowledgeAgent, SupportAgentMock
+from app.application.agents import KnowledgeAgent
 from app.application.usecase import MessageUseCase
 from app.domain.models import RouterDecision
 from app.main import createApp
@@ -27,6 +27,11 @@ class EmptyRetriever:
     def retrieveRelevant(self, *, query: str, topK: int = 5):
         del query, topK
         return []
+
+
+class UnusedRouteAgent:
+    def handleMessage(self, message: str) -> str:
+        raise AssertionError(f"unexpected agent in knowledge-only test: {message[:80]}")
 
 
 @pytest.mark.integration
@@ -49,12 +54,13 @@ def testKnowledgeAgentAddUrlUpdatesRagDatabase():
         pytest.skip(f"Skipping DB mutation integration test due unavailable test DB: {exc}")
 
     useCase = MessageUseCase(
-        routerModel=StubKnowledgeRouter(),
         knowledgeAgent=KnowledgeAgent(
             retriever=EmptyRetriever(),
             ingestionTool=KnowledgeIngestionToolAdapter(ingestionService=ingestionService),
         ),
-        supportAgent=SupportAgentMock(),
+        supportAgent=UnusedRouteAgent(),
+        swarmKnowledgeAgent=UnusedRouteAgent(),
+        routerModel=StubKnowledgeRouter(),
     )
     app = createApp(messageUseCase=useCase)
     client = TestClient(app)
