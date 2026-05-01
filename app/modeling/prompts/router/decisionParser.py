@@ -5,7 +5,7 @@ from typing import Any
 
 from app.domain.models import RouterDecision
 
-VALID_ROUTES = frozenset({"knowledge", "support"})
+VALID_ROUTES = frozenset({"knowledge", "support", "swarm"})
 
 
 def parseRouterDecision(rawContent: str, *, usedModel: str | None) -> RouterDecision:

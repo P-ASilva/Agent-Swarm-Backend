@@ -1,13 +1,14 @@
+from __future__ import annotations
+
 KNOWLEDGE_OUTPUT_CONTRACT = """
-Return STRICT JSON with this schema:
+Retorne JSON ESTRITO com este esquema:
 {
   "answer": "string"
 }
 
-Formatting rules for "answer":
-- 1 short paragraph + optional bullets when useful.
-- Must be grounded in provided context snippets only (RAG excerpts or web-citation excerpts, as labeled).
-- Must not include markdown headings.
-- Must not include source URLs (sources are appended by the API layer).
+Regras de formatação do campo "answer":
+- 1 parágrafo curto + marcadores opcionais quando forem úteis.
+- Deve estar fundamentado apenas nos trechos de contexto fornecidos (trechos RAG ou de citação web, conforme indicado).
+- Não inclua títulos em markdown.
+- Não inclua URLs de fontes (a camada da API acrescenta as fontes).
 """.strip()
-
