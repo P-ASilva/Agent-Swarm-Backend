@@ -27,9 +27,7 @@ flowchart TD
   RET --> RAG[(Postgres pgvector)]
   ING --> RAG
 
-  EX --> PERM[UserMessagePersistenceAdapter]
-
-  GRout --> PERM
+  EX --> PERM[UserPersistenceAdapter]
 
   PERM --> SESS[(Postgres sessão)]
 ```
