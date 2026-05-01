@@ -20,14 +20,15 @@ flowchart TD
   K --> ING[KnowledgeIngestionToolAdapter]
   K --> WEB[OpenAiWebSearchAdapter]
 
-  S --> EX["SupportOperationsExecutor profile_patch delete_turns noop"]
-
-  SW --> SWP["Guia determinístico modeling/prompts/swarm"]
+  S --> HD["HistoryDeletionTool"]
+  S --> DE["DatabaseEditortool"]
 
   RET --> RAG[(Postgres pgvector)]
   ING --> RAG
 
-  EX --> PERM[UserPersistenceAdapter]
+  K --> PERM[UserPersistenceAdapter]
+  S --> PERM
+  K --> PERM
 
   PERM --> SESS[(Postgres sessão)]
 ```
