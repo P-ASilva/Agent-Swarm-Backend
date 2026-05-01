@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
@@ -12,6 +10,7 @@ from app.domain.models import GoogleIdentity, RouterDecision
 from app.domain.ports import InvalidGoogleTokenError
 from app.main import createApp
 from message_persistence import MessageDatabaseMigrationRunner
+from tests.integration.session_test_db import resolve_session_integration_database_url
 
 
 class StubGoogleTokenVerifier:
@@ -43,9 +42,7 @@ class InspectingAgent:
 
 @pytest.mark.integration
 def testGoogleAuthenticatedMessagesPersistAndLoadDailyContext():
-    databaseUrl = os.getenv("SESSION_TEST_DATABASE_URL", "").strip()
-    if not databaseUrl:
-        pytest.skip("Set SESSION_TEST_DATABASE_URL to run Google message persistence integration tests.")
+    databaseUrl = resolve_session_integration_database_url()
 
     migrations = MessageDatabaseMigrationRunner(databaseUrl=databaseUrl)
     try:
@@ -56,7 +53,7 @@ def testGoogleAuthenticatedMessagesPersistAndLoadDailyContext():
     with psycopg.connect(databaseUrl, autocommit=True) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
-                "TRUNCATE TABLE user_message_turns, app_users CASCADE",
+                "TRUNCATE TABLE user_message_turns, conversation_profiles, app_users CASCADE",
             )
 
     agent = InspectingAgent()
@@ -81,9 +78,9 @@ def testGoogleAuthenticatedMessagesPersistAndLoadDailyContext():
     assert second.status_code == 200, second.text
 
     assert len(agent.receivedMessages) == 2
-    assert "Conversation history from today" in agent.receivedMessages[1]
-    assert "user: first user request" in agent.receivedMessages[1]
-    assert "assistant: ACK" in agent.receivedMessages[1]
+    assert "Histórico da conversa de hoje" in agent.receivedMessages[1]
+    assert "usuário: first user request" in agent.receivedMessages[1]
+    assert "assistente: ACK" in agent.receivedMessages[1]
 
     with psycopg.connect(databaseUrl, autocommit=True) as connection:
         with connection.cursor() as cursor:
@@ -98,9 +95,7 @@ def testGoogleAuthenticatedMessagesPersistAndLoadDailyContext():
 
 @pytest.mark.integration
 def testGuestMessagesPersistWithoutGoogleToken():
-    databaseUrl = os.getenv("SESSION_TEST_DATABASE_URL", "").strip()
-    if not databaseUrl:
-        pytest.skip("Set SESSION_TEST_DATABASE_URL to run message persistence integration tests.")
+    databaseUrl = resolve_session_integration_database_url()
 
     migrations = MessageDatabaseMigrationRunner(databaseUrl=databaseUrl)
     try:
@@ -110,7 +105,9 @@ def testGuestMessagesPersistWithoutGoogleToken():
 
     with psycopg.connect(databaseUrl, autocommit=True) as connection:
         with connection.cursor() as cursor:
-            cursor.execute("TRUNCATE TABLE user_message_turns, app_users CASCADE")
+            cursor.execute(
+                "TRUNCATE TABLE user_message_turns, conversation_profiles, app_users CASCADE",
+            )
 
     useCase = MessageUseCase(
         routerModel=ForcedSupportRouter(),
@@ -142,10 +139,7 @@ def testMessagesRejectInvalidGoogleToken():
         supportAgent=InspectingAgent(),
         googleTokenVerifier=StubGoogleTokenVerifier(),
         userMessagePersistence=UserMessagePersistenceAdapter(
-            databaseUrl=os.getenv(
-                "SESSION_TEST_DATABASE_URL",
-                "postgresql://session_swarm:session_swarm@localhost:5433/session_swarm",
-            )
+            databaseUrl=resolve_session_integration_database_url(),
         ),
     )
     client = TestClient(createApp(messageUseCase=useCase))

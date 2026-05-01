@@ -69,14 +69,14 @@ def testKnowledgeAgentAddUrlUpdatesRagDatabase():
     response = client.post(
         "/messages",
         json={
-            "message": f"Please add {fixtureUrl} to knowledge context",
+            "message": f"Por favor adicione {fixtureUrl} ao contexto de conhecimento",
             "userId": "client789",
         },
     )
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
-    assert "Knowledge context updated successfully." in body["reply"]
+    assert "Contexto de conhecimento atualizado com sucesso." in body["reply"]
 
     with psycopg.connect(databaseUrl, autocommit=True) as connection:
         with connection.cursor() as cursor:

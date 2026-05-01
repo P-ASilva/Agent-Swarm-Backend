@@ -192,7 +192,7 @@ def test_knowledgeAgentEmptyRagAndEmptyWebReturnsPromptForUrl():
         webSearch=_FixedWebSearch([]),
     )
     reply = agent.handleMessage("some question")
-    assert "could not find grounded context" in reply
+    assert "Ainda não encontrei contexto fundamentado" in reply
 
 
 def test_knowledgeAgentNoWebSearchUsesWeakRagChunk():

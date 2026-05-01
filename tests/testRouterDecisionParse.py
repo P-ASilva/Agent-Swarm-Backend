@@ -5,7 +5,7 @@ from app.modeling.prompts.router.decisionParser import parseRouterDecision
 
 def test_parseRouterDecision_validKnowledge():
     d = parseRouterDecision(
-        '{"route":"knowledge","rationale":"pricing question"}',
+        '{"route":"knowledge","rationale":"pergunta sobre preços"}',
         usedModel="gpt-test",
     )
     assert d.route == "knowledge"
@@ -16,15 +16,24 @@ def test_parseRouterDecision_validKnowledge():
 
 def test_parseRouterDecision_validSupport():
     d = parseRouterDecision(
-        '{"route":"support","rationale":"cannot log in"}',
+        '{"route":"support","rationale":"não consegue fazer login"}',
         usedModel="gpt-test",
     )
     assert d.route == "support"
 
 
+def test_parseRouterDecision_validSwarm():
+    d = parseRouterDecision(
+        '{"route":"swarm","rationale":"pergunta sobre arquitetura do assistente"}',
+        usedModel="gpt-test",
+    )
+    assert d.route == "swarm"
+    assert not d.degraded
+
+
 def test_parseRouterDecision_legacyFallbackCoercedToKnowledge():
     d = parseRouterDecision(
-        '{"route":"fallback","rationale":"ignored"}',
+        '{"route":"fallback","rationale":"legado"}',
         usedModel=None,
     )
     assert d.route == "knowledge"
@@ -34,7 +43,7 @@ def test_parseRouterDecision_legacyFallbackCoercedToKnowledge():
 
 def test_parseRouterDecision_unknownRouteIsDegraded():
     d = parseRouterDecision(
-        '{"route":"escalate","rationale":"x"}',
+        '{"route":"escalate","rationale":"desconhecido"}',
         usedModel=None,
     )
     assert d.route == "knowledge"
@@ -50,7 +59,7 @@ def test_parseRouterDecision_invalidJson():
 
 def test_parseRouterDecision_ignoresModelReplyField():
     d = parseRouterDecision(
-        '{"route":"knowledge","rationale":"x","reply":"Should be ignored"}',
+        '{"route":"knowledge","rationale":"x","reply":"deve ser ignorado"}',
         usedModel=None,
     )
     assert d.route == "knowledge"
