@@ -16,5 +16,5 @@ playground-system/*
 .venv/
 venv/
 env/
-# Context files / External documents
+# Local challenge spec (not versioned)
 challenge-context.md
