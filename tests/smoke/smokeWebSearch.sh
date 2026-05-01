@@ -41,7 +41,7 @@ PY
 
 messages_json="$(curl -fsS \
   -H "Content-Type: application/json" \
-  -d "{\"message\":\"What is the current Selic rate in Brazil?\",\"userId\":\"$USER_ID\"}" \
+  -d "{\"message\":\"Qual é a taxa Selic atual no Brasil?\",\"userId\":\"$USER_ID\"}" \
   "$BASE_URL/messages")"
 
 _smoke_python - <<'PY' "$messages_json" "$BASE_URL"
@@ -58,12 +58,12 @@ assert reply, "reply must be non-empty"
 
 print("")
 print(f"=== Web search smoke ({base}) ===")
-print("Question: What is the current Selic rate in Brazil?")
+print("Pergunta: Qual é a taxa Selic atual no Brasil?")
 print(f"status:   {payload.get('status')}")
 print(f"traceId:  {payload.get('traceId')}")
 print("")
-print("Answer:")
+print("Resposta:")
 print(reply)
 print("")
-print("Smoke finished (inspect API logs for web search lines if routed to knowledge).")
+print("Smoke concluído (veja logs da API se a rota foi conhecimento + busca web).")
 PY

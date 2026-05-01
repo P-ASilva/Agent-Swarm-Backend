@@ -17,7 +17,7 @@ PY
 
 messages_json="$(curl -fsS \
   -H "Content-Type: application/json" \
-  -d '{"message":"How can I use my phone as a card machine?","userId":"client789"}' \
+  -d '{"message":"Como usar o celular como maquininha de cartão?","userId":"client789"}' \
   "$BASE_URL/messages")"
 
 python - <<'PY' "$messages_json"
@@ -34,8 +34,8 @@ invalid_status="$(curl -sS -o /dev/null -w "%{http_code}" \
   -d '{}' \
   "$BASE_URL/messages")"
 if [[ "$invalid_status" != "422" ]]; then
-  echo "Expected HTTP 422 for invalid payload, got: $invalid_status" >&2
+    echo "Esperado HTTP 422 para payload inválido, obtido: $invalid_status" >&2
   exit 1
 fi
 
-echo "Docker smoke tests passed: /health and /messages are healthy at $BASE_URL."
+echo "Smoke Docker concluído: /health e /messages respondem em $BASE_URL."

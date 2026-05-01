@@ -13,7 +13,7 @@ if ($health.status -ne "ok") {
 }
 
 $payload = @{
-    message = "What is the current Selic rate in Brazil?"
+    message = "Qual é a taxa Selic atual no Brasil?"
     userId  = $userId
 }
 
@@ -32,11 +32,11 @@ if (-not $response.reply.Trim()) {
 
 Write-Host ""
 Write-Host "=== Web search smoke ($baseUrl) ==="
-Write-Host "Question: $($payload.message)"
+Write-Host "Pergunta: $($payload.message)"
 Write-Host "status:   $($response.status)"
 Write-Host "traceId:  $($response.traceId)"
 Write-Host ""
-Write-Host "Answer:"
+Write-Host "Resposta:"
 Write-Host $response.reply
 Write-Host ""
-Write-Host "Smoke finished (inspect API logs for web search lines if routed to knowledge)."
+Write-Host "Smoke concluído (veja logs da API se a rota foi conhecimento + busca web)."

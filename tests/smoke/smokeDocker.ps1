@@ -12,7 +12,7 @@ if ($health.status -ne "ok") {
 }
 
 $payload = @{
-    message = "How can I use my phone as a card machine?"
+    message = "Como usar o celular como maquininha de cartão?"
     userId = "client789"
 }
 
@@ -40,4 +40,4 @@ try {
     }
 }
 
-Write-Host "Docker smoke tests passed: /health and /messages are healthy at $baseUrl."
+Write-Host "Smoke Docker concluído: /health e /messages respondem em $baseUrl."

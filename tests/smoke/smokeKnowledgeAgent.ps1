@@ -48,19 +48,19 @@ fixture_url = "https://www.infinitepay.io/pix"
 
 add_response = client.post(
     "/messages",
-    json={"message": f"Please add {fixture_url} to knowledge context", "userId": "client789"},
+    json={"message": f"Por favor adicione {fixture_url} ao contexto de conhecimento", "userId": "client789"},
 )
 assert add_response.status_code == 200, add_response.text
-assert "Knowledge context updated successfully." in add_response.json()["reply"], add_response.json()
+assert "Contexto de conhecimento atualizado com sucesso." in add_response.json()["reply"], add_response.json()
 
 answer_response = client.post(
     "/messages",
-    json={"message": "How can I use my phone as a card machine?", "userId": "client789"},
+    json={"message": "Como usar o celular como maquininha de cartão?", "userId": "client789"},
 )
 assert answer_response.status_code == 200, answer_response.text
-assert "Knowledge answer (grounded):" in answer_response.json()["reply"], answer_response.json()
+assert "[fontes:" in answer_response.json()["reply"], answer_response.json()
 
-print("KnowledgeAgent smoke checks passed.")
+print("Smoke do Agente de Conhecimento concluído com sucesso.")
 '@
 
 $script | docker compose --profile rag run --build --rm rag_ingest python -
