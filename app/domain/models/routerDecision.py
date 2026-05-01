@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 
-RouteName = Literal["knowledge", "support"]
+RouteName = Literal["knowledge", "support", "swarm"]
 
 
 @dataclass(frozen=True)

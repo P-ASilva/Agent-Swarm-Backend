@@ -5,6 +5,7 @@ from app.domain.ports.outbound.googleTokenVerifierPort import (
 )
 from app.domain.ports.outbound.knowledgeIngestionToolPort import KnowledgeIngestionToolPort
 from app.domain.ports.outbound.knowledgeRetrieverPort import KnowledgeRetrieverPort
+from app.domain.ports.outbound.messageGuardrailsPort import MessageGuardrailsPort
 from app.domain.ports.outbound.openAiChatPort import OpenAiChatPort
 from app.domain.ports.outbound.routerModelPort import RouterModelPort
 from app.domain.ports.outbound.userMessagePersistencePort import UserMessagePersistencePort
@@ -16,6 +17,7 @@ __all__ = [
     "InvalidGoogleTokenError",
     "KnowledgeIngestionToolPort",
     "KnowledgeRetrieverPort",
+    "MessageGuardrailsPort",
     "OpenAiChatPort",
     "RouterModelPort",
     "UserMessagePersistencePort",

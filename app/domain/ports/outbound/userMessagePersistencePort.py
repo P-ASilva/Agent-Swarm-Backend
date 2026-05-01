@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Protocol
+from typing import Any, Protocol
 
-from app.domain.models import GoogleIdentity, UserMessageRecord
+from app.domain.models import (
+    ConversationProfileSnapshot,
+    GoogleIdentity,
+    TurnDeletionSpecification,
+    UserMessageRecord,
+)
 
 
 class UserMessagePersistencePort(Protocol):
@@ -29,3 +34,23 @@ class UserMessagePersistencePort(Protocol):
         traceId: str,
     ) -> None:
         """Persist one user request + model answer; googleIdentity is set when authenticated via Google."""
+
+    def getConversationProfile(self, *, conversationOwnerKey: str) -> ConversationProfileSnapshot:
+        ...
+
+    def upsertConversationProfile(
+        self,
+        *,
+        conversationOwnerKey: str,
+        displayName: str | None = None,
+        metadataPatch: dict[str, Any] | None = None,
+    ) -> None:
+        ...
+
+    def deleteMessageTurns(
+        self,
+        *,
+        conversationOwnerKey: str,
+        specification: TurnDeletionSpecification,
+    ) -> int:
+        """Hard-delete turns scoped to owner key; returns count of deleted rows."""

@@ -9,3 +9,5 @@ class UserMessageRecord:
     userRequest: str
     modelAnswer: str
     createdAt: datetime
+    turnId: str | None = None
+    traceId: str | None = None
