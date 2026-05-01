@@ -1,4 +1,14 @@
 
+/refactor removed router route `fallback`: routing is only `knowledge` or `support`; out-of-scope style questions default to knowledge path; degraded routing still sets a static `RouterDecision.reply`; legacy JSON `route:\"fallback\"` is coerced to `knowledge` in `parseRouterDecision`.
+
+/fix KnowledgeAgent: stricter RAG score floor (0.62) when web search is configured; web search query uses bare user message; retry web search when the formatter admits missing context; web-specific system addendum so answers use cited web excerpts (not only InfinitePay).
+
+/chore hardened `smokeWebSearch.sh` to find Python via `PYTHON`, `python3`, `python`, or `py -3` on Windows Git Bash.
+
+/test added `tests/smoke/smokeWebSearch.sh` and `smokeWebSearch.ps1` live smoke script that posts a Selic question to `/messages` and prints the reply.
+
+/feat added optional knowledge web search fallback using OpenAI Responses API (`web_search_preview`) via `OpenAiWebSearchAdapter`, gated by RAG relevance score and configurable with `WEB_SEARCH_MODEL` (same `OPENAI_API_KEY` as chat).
+
 /refactor renamed **`DefaultMessageUseCase`** → **`MessageUseCase`** (module **`defaultMessageUseCase`** → **`messageUseCase`**).
 /refactor moved RAG package to **`app.infra.rag_pipeline`** with seed manifest **`app/infra/rag_pipeline/seedUrls.json`**; user-message migrations CLI to **`message_persistence`** (`python -m message_persistence.cli migrate` at repo root); removed **`app.rag_pipeline`** / **`app.message_db`** packages.
 /refactor simplified `app.infra.rag_pipeline.cli` ingestion args: derive explicit URLs only from `seed_url` (`add-url` maps `--url` there), drop redundant **`url`** merge path that duplicated each URL once.
