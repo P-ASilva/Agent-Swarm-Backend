@@ -10,4 +10,4 @@ class KnowledgeAgentMock(AgentHandlerPort):
     openAiChat: OpenAiChatPort | None = None
 
     def handleMessage(self, message: str) -> str:
-        return f"Knowledge agent answered: {message}"
+        return f"Agente de conhecimento respondeu: {message}"

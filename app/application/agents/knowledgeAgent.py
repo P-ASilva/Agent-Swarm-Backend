@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from app.application.agents.knowledgeIntent import KnowledgeIntent
+from app.domain.conversationContextMarkers import FULL_CURRENT_USER_MESSAGE_LEADER
 from app.domain.models import RetrievedChunk, WebSearchResult
 from app.domain.ports import AgentHandlerPort, KnowledgeIngestionToolPort, KnowledgeRetrieverPort
 from app.domain.ports import OpenAiChatPort, WebSearchPort
@@ -34,7 +35,7 @@ _ENVELOPE_INSUFFICIENCY_MARKERS = (
 )
 
 URL_PATTERN = re.compile(r"(https?://[^\s]+|file://[^\s]+)", re.IGNORECASE)
-ADD_URL_HINTS = ("add", "ingest", "index")
+ADD_URL_HINTS = ("add", "ingest", "index", "adicione", "adicionar", "ingerir", "indexar")
 
 logger = logging.getLogger(__name__)
 
@@ -61,12 +62,12 @@ class KnowledgeAgent(AgentHandlerPort):
                 )
             except Exception as exc:
                 return (
-                    "Knowledge context update failed. "
-                    f"[url={intent.url} error={type(exc).__name__}]"
+                    "Falha ao atualizar o contexto de conhecimento. "
+                    f"[url={intent.url} erro={type(exc).__name__}]"
                 )
             return (
-                "Knowledge context updated successfully. "
-                f"[url={intent.url} run_id={result.runId} chunks={result.chunksWritten}]"
+                "Contexto de conhecimento atualizado com sucesso. "
+                f"[url={intent.url} execução={result.runId} trechos={result.chunksWritten}]"
             )
 
         logger.info("retrieval topK=%d", self.retrievalTopK)
@@ -74,8 +75,8 @@ class KnowledgeAgent(AgentHandlerPort):
             chunks = self.retriever.retrieveRelevant(query=message, topK=self.retrievalTopK)
         except Exception as exc:
             return (
-                "Knowledge retrieval is temporarily unavailable. "
-                f"[error={type(exc).__name__}]"
+                "A recuperação de conhecimento está temporariamente indisponível. "
+                f"[erro={type(exc).__name__}]"
             )
 
         useWebGate = self.webSearch is not None
@@ -108,8 +109,8 @@ class KnowledgeAgent(AgentHandlerPort):
 
             if not chunks:
                 return (
-                    "I could not find grounded context in the knowledge base yet. "
-                    "Provide a source URL so I can add it to context."
+                    "Ainda não encontrei contexto fundamentado na base de conhecimento. "
+                    "Informe uma URL de fonte para que eu possa adicioná-la ao contexto."
                 )
 
             return self._answerFromRagChunks(
@@ -119,8 +120,8 @@ class KnowledgeAgent(AgentHandlerPort):
         if not useWebGate:
             if not chunks:
                 return (
-                    "I could not find grounded context in the knowledge base yet. "
-                    "Provide a source URL so I can add it to context."
+                    "Ainda não encontrei contexto fundamentado na base de conhecimento. "
+                    "Informe uma URL de fonte para que eu possa adicioná-la ao contexto."
                 )
             return self._answerFromRagChunks(
                 message=message, chunks=chunks, webBackedContext=False
@@ -181,6 +182,20 @@ class KnowledgeAgent(AgentHandlerPort):
         lower = envelope.lower()
         return any(marker in lower for marker in _ENVELOPE_INSUFFICIENCY_MARKERS)
 
+    def _sourcesSuffixFromChunks(self, chunks: list[RetrievedChunk], *, limit: int = 2) -> str:
+        labels: list[str] = []
+        for chunk in chunks:
+            raw = (chunk.sourceUrl or "").strip()
+            if not raw or raw == "-":
+                continue
+            if raw not in labels:
+                labels.append(raw)
+            if len(labels) >= limit:
+                break
+        if not labels:
+            return ""
+        return f" [fontes: {', '.join(labels)}]"
+
     def _answerFromRagChunks(
         self,
         *,
@@ -192,8 +207,8 @@ class KnowledgeAgent(AgentHandlerPort):
     ) -> str:
         if not chunks:
             return (
-                "I could not find grounded context in the knowledge base yet. "
-                "Provide a source URL so I can add it to context."
+                "Ainda não encontrei contexto fundamentado na base de conhecimento. "
+                "Informe uma URL de fonte para que eu possa adicioná-la ao contexto."
             )
 
         logger.info(
@@ -210,23 +225,12 @@ class KnowledgeAgent(AgentHandlerPort):
                     contextIntro=contextIntro,
                     webBackedContext=webBackedContext,
                 )
-                sources = ", ".join(
-                    dict.fromkeys(
-                        (s or "-") for s in (chunk.sourceUrl for chunk in chunks[:2])
-                    )
-                )
-                return f"Knowledge answer (grounded): {answer} [sources: {sources}]"
+                return f"{answer}{self._sourcesSuffixFromChunks(chunks)}"
             except Exception:
                 pass
 
         primary = chunks[0]
-        sources = ", ".join(
-            dict.fromkeys((s or "-") for s in (chunk.sourceUrl for chunk in chunks[:2]))
-        )
-        return (
-            f"Knowledge answer (grounded): {primary.text} "
-            f"[sources: {sources}]"
-        )
+        return f"{primary.text}{self._sourcesSuffixFromChunks(chunks)}"
 
     def _buildGroundedAnswerWithModel(
         self,
@@ -250,7 +254,7 @@ class KnowledgeAgent(AgentHandlerPort):
             )
         contextBlock = "\n\n".join(contextLines)
         userPrompt = (
-            "Pergunta do usuario:\n"
+            "Pergunta do usuário:\n"
             f"{message}\n\n"
             f"{contextIntro}:\n"
             f"{contextBlock}"
@@ -283,9 +287,14 @@ class KnowledgeAgent(AgentHandlerPort):
         return answer.strip()
 
     def _extractBareMessage(self, message: str) -> str:
-        marker = "Current user message:\n"
-        idx = message.rfind(marker)
-        return message[idx + len(marker):].strip() if idx != -1 else message
+        idx = message.rfind(FULL_CURRENT_USER_MESSAGE_LEADER)
+        if idx != -1:
+            return message[idx + len(FULL_CURRENT_USER_MESSAGE_LEADER) :].strip()
+        legacy = "Current user message:\n"
+        idxLegacy = message.rfind(legacy)
+        if idxLegacy != -1:
+            return message[idxLegacy + len(legacy) :].strip()
+        return message
 
     def _parseIntent(self, message: str) -> KnowledgeIntent:
         parsed = self._parseStructuredIntent(message)

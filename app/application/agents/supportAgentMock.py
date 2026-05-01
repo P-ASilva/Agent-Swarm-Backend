@@ -10,4 +10,4 @@ class SupportAgentMock(AgentHandlerPort):
     openAiChat: OpenAiChatPort | None = None
 
     def handleMessage(self, message: str) -> str:
-        return f"Support agent answered: {message}"
+        return f"Agente de suporte respondeu: {message}"
