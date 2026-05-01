@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from typing import Any
@@ -13,6 +14,8 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for minimal environme
         return False
 
 from app.domain.ports import OpenAiChatPort
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -40,6 +43,7 @@ class OpenAiChatAdapter(OpenAiChatPort):
         if not self.apiKey:
             raise RuntimeError("OPENAI_API_KEY is not configured.")
 
+        logger.info("openai call model=%s", model)
         payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
@@ -73,4 +77,5 @@ class OpenAiChatAdapter(OpenAiChatPort):
         content = messagePayload.get("content")
         if not isinstance(content, str) or not content.strip():
             raise RuntimeError("OpenAI response content missing.")
+        logger.info("openai response received model=%s", model)
         return content
