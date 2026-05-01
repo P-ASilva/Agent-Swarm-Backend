@@ -6,7 +6,7 @@ Return STRICT JSON with this schema:
 
 Formatting rules for "answer":
 - 1 short paragraph + optional bullets when useful.
-- Must be grounded in provided context only.
+- Must be grounded in provided context snippets only (RAG excerpts or web-citation excerpts, as labeled).
 - Must not include markdown headings.
 - Must not include source URLs (sources are appended by the API layer).
 """.strip()

@@ -1,18 +1,42 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from app.application.agents.knowledgeIntent import KnowledgeIntent
-from app.domain.models import RetrievedChunk
-from app.domain.ports import OpenAiChatPort
+from app.domain.models import RetrievedChunk, WebSearchResult
 from app.domain.ports import AgentHandlerPort, KnowledgeIngestionToolPort, KnowledgeRetrieverPort
-from app.modeling.prompts.knowledge import KNOWLEDGE_OUTPUT_CONTRACT, KNOWLEDGE_SYSTEM_PROMPT
+from app.domain.ports import OpenAiChatPort, WebSearchPort
+from app.modeling.prompts.knowledge import (
+    KNOWLEDGE_OUTPUT_CONTRACT,
+    KNOWLEDGE_SYSTEM_PROMPT,
+    KNOWLEDGE_WEB_CONTEXT_ADDENDUM,
+)
+
+RAG_SCORE_FLOOR_WHEN_WEB_CONFIGURED = 0.62
+
+_ENVELOPE_INSUFFICIENCY_MARKERS = (
+    "não disponho",
+    "não tenho informações",
+    "informação insuficiente",
+    "informações insuficientes",
+    "contexto insuficiente",
+    "não foi possível localizar",
+    "não encontrei",
+    "não consta nos conteúdos",
+    "não constam nos conteúdos",
+    "sem informações nos trechos",
+    "cannot find grounded",
+    "insufficient context",
+)
 
 URL_PATTERN = re.compile(r"(https?://[^\s]+|file://[^\s]+)", re.IGNORECASE)
-ADD_URL_HINTS = ("add", "context", "knowledge", "ingest", "index", "save")
+ADD_URL_HINTS = ("add", "ingest", "index")
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -21,10 +45,13 @@ class KnowledgeAgent(AgentHandlerPort):
     ingestionTool: KnowledgeIngestionToolPort
     retrievalTopK: int = 3
     openAiChat: OpenAiChatPort | None = None
+    webSearch: WebSearchPort | None = None
+    ragRelevanceThreshold: float = 0.45
     responseModel: str = "gpt-4.1-mini"
 
     def handleMessage(self, message: str) -> str:
         intent = self._parseIntent(message)
+        logger.info("intent kind=%s url=%s", intent.kind, intent.url or "-")
         if intent.kind == "add_url" and intent.url:
             try:
                 result = self.ingestionTool.addUrl(
@@ -42,6 +69,7 @@ class KnowledgeAgent(AgentHandlerPort):
                 f"[url={intent.url} run_id={result.runId} chunks={result.chunksWritten}]"
             )
 
+        logger.info("retrieval topK=%d", self.retrievalTopK)
         try:
             chunks = self.retriever.retrieveRelevant(query=message, topK=self.retrievalTopK)
         except Exception as exc:
@@ -49,29 +77,165 @@ class KnowledgeAgent(AgentHandlerPort):
                 "Knowledge retrieval is temporarily unavailable. "
                 f"[error={type(exc).__name__}]"
             )
+
+        useWebGate = self.webSearch is not None
+        strongThresh = self._effectiveRagStrengthThreshold()
+        ragStrong = bool(chunks) and chunks[0].score >= strongThresh
+
+        if useWebGate and not ragStrong:
+            webResults: list[WebSearchResult] = []
+            if self.webSearch:
+                try:
+                    if chunks:
+                        logger.info("rag score below threshold — falling back to web search")
+                    else:
+                        logger.info("rag retrieval miss — falling back to web search")
+                    webResults = self.webSearch.search(
+                        self._extractBareMessage(message), maxResults=5
+                    )
+                except Exception:
+                    webResults = []
+
+            if webResults:
+                synthetic = self._webResultsAsChunks(webResults)
+                return self._answerFromRagChunks(
+                    message=message,
+                    chunks=synthetic,
+                    sourceLabel="web_search",
+                    contextIntro="Resultados de busca na web (citados)",
+                    webBackedContext=True,
+                )
+
+            if not chunks:
+                return (
+                    "I could not find grounded context in the knowledge base yet. "
+                    "Provide a source URL so I can add it to context."
+                )
+
+            return self._answerFromRagChunks(
+                message=message, chunks=chunks, webBackedContext=False
+            )
+
+        if not useWebGate:
+            if not chunks:
+                return (
+                    "I could not find grounded context in the knowledge base yet. "
+                    "Provide a source URL so I can add it to context."
+                )
+            return self._answerFromRagChunks(
+                message=message, chunks=chunks, webBackedContext=False
+            )
+
+        reply = self._answerFromRagChunks(
+            message=message, chunks=chunks, webBackedContext=False
+        )
+        if (
+            self.openAiChat
+            and self._groundedEnvelopeAdmitsInsufficientContext(reply)
+        ):
+            logger.info(
+                "formatter signaled missing factual context despite strong retrieval — retrying via web search"
+            )
+            try:
+                webRetry = (
+                    self.webSearch.search(self._extractBareMessage(message), maxResults=5)
+                    if self.webSearch
+                    else []
+                )
+            except Exception:
+                webRetry = []
+            if webRetry:
+                synthetic = self._webResultsAsChunks(webRetry)
+                return self._answerFromRagChunks(
+                    message=message,
+                    chunks=synthetic,
+                    sourceLabel="web_search",
+                    contextIntro="Resultados de busca na web (citados)",
+                    webBackedContext=True,
+                )
+
+        return reply
+
+    def _webResultsAsChunks(self, results: list[WebSearchResult]) -> list[RetrievedChunk]:
+        out: list[RetrievedChunk] = []
+        for index, row in enumerate(results):
+            out.append(
+                RetrievedChunk(
+                    chunkId=f"web:{index}",
+                    text=row.content,
+                    sourceUrl=row.url,
+                    title=row.title,
+                    score=float(row.score),
+                    documentVersion="web_search",
+                    metadata={"source": "web_search"},
+                )
+            )
+        return out
+
+    def _effectiveRagStrengthThreshold(self) -> float:
+        if self.webSearch is None:
+            return self.ragRelevanceThreshold
+        return max(self.ragRelevanceThreshold, RAG_SCORE_FLOOR_WHEN_WEB_CONFIGURED)
+
+    def _groundedEnvelopeAdmitsInsufficientContext(self, envelope: str) -> bool:
+        lower = envelope.lower()
+        return any(marker in lower for marker in _ENVELOPE_INSUFFICIENCY_MARKERS)
+
+    def _answerFromRagChunks(
+        self,
+        *,
+        message: str,
+        chunks: list[RetrievedChunk],
+        sourceLabel: str = "rag",
+        contextIntro: str = "Contexto recuperado (RAG)",
+        webBackedContext: bool = False,
+    ) -> str:
         if not chunks:
             return (
                 "I could not find grounded context in the knowledge base yet. "
                 "Provide a source URL so I can add it to context."
             )
 
+        logger.info(
+            "generating grounded answer model=%s chunks=%d source=%s",
+            self.responseModel,
+            len(chunks),
+            sourceLabel,
+        )
         if self.openAiChat:
             try:
-                answer = self._buildGroundedAnswerWithModel(message=message, chunks=chunks)
-                sources = ", ".join(dict.fromkeys(chunk.sourceUrl for chunk in chunks[:2]))
+                answer = self._buildGroundedAnswerWithModel(
+                    message=message,
+                    chunks=chunks,
+                    contextIntro=contextIntro,
+                    webBackedContext=webBackedContext,
+                )
+                sources = ", ".join(
+                    dict.fromkeys(
+                        (s or "-") for s in (chunk.sourceUrl for chunk in chunks[:2])
+                    )
+                )
                 return f"Knowledge answer (grounded): {answer} [sources: {sources}]"
             except Exception:
-                # Fall back to deterministic chunk response if formatting model fails.
                 pass
 
         primary = chunks[0]
-        sources = ", ".join(dict.fromkeys(chunk.sourceUrl for chunk in chunks[:2]))
+        sources = ", ".join(
+            dict.fromkeys((s or "-") for s in (chunk.sourceUrl for chunk in chunks[:2]))
+        )
         return (
             f"Knowledge answer (grounded): {primary.text} "
             f"[sources: {sources}]"
         )
 
-    def _buildGroundedAnswerWithModel(self, *, message: str, chunks: list[RetrievedChunk]) -> str:
+    def _buildGroundedAnswerWithModel(
+        self,
+        *,
+        message: str,
+        chunks: list[RetrievedChunk],
+        contextIntro: str = "Contexto recuperado (RAG)",
+        webBackedContext: bool = False,
+    ) -> str:
         if not self.openAiChat:
             raise RuntimeError("knowledge formatting model is not configured")
 
@@ -88,16 +252,24 @@ class KnowledgeAgent(AgentHandlerPort):
         userPrompt = (
             "Pergunta do usuario:\n"
             f"{message}\n\n"
-            "Contexto recuperado (RAG):\n"
+            f"{contextIntro}:\n"
             f"{contextBlock}"
         )
 
+        completionMessages: list[dict[str, str]] = [
+            {"role": "system", "content": KNOWLEDGE_SYSTEM_PROMPT},
+        ]
+        if webBackedContext:
+            completionMessages.append(
+                {"role": "system", "content": KNOWLEDGE_WEB_CONTEXT_ADDENDUM},
+            )
+        completionMessages.append(
+            {"role": "system", "content": KNOWLEDGE_OUTPUT_CONTRACT},
+        )
+        completionMessages.append({"role": "user", "content": userPrompt})
+
         content = self.openAiChat.chatCompletion(
-            messages=[
-                {"role": "system", "content": KNOWLEDGE_SYSTEM_PROMPT},
-                {"role": "system", "content": KNOWLEDGE_OUTPUT_CONTRACT},
-                {"role": "user", "content": userPrompt},
-            ],
+            messages=completionMessages,
             model=self.responseModel,
             temperature=0.1,
             responseFormat={"type": "json_object"},
@@ -110,15 +282,24 @@ class KnowledgeAgent(AgentHandlerPort):
             raise RuntimeError("knowledge-answer-missing")
         return answer.strip()
 
+    def _extractBareMessage(self, message: str) -> str:
+        marker = "Current user message:\n"
+        idx = message.rfind(marker)
+        return message[idx + len(marker):].strip() if idx != -1 else message
+
     def _parseIntent(self, message: str) -> KnowledgeIntent:
         parsed = self._parseStructuredIntent(message)
         if parsed is not None:
             return parsed
 
-        lower = message.lower()
-        urlMatch = URL_PATTERN.search(message)
-        if urlMatch and any(hint in lower for hint in ADD_URL_HINTS):
-            return KnowledgeIntent(kind="add_url", url=urlMatch.group(1))
+        bareMessage = self._extractBareMessage(message)
+        lower = bareMessage.lower()
+        urlMatch = URL_PATTERN.search(bareMessage)
+        if urlMatch:
+            urlStart = urlMatch.start()
+            textBeforeUrl = lower[:urlStart]
+            if any(hint in textBeforeUrl for hint in ADD_URL_HINTS):
+                return KnowledgeIntent(kind="add_url", url=urlMatch.group(1))
 
         return KnowledgeIntent(kind="answer")
 

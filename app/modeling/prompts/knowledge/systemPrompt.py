@@ -10,3 +10,10 @@ Rules:
 - Prefer Brazilian Portuguese.
 """.strip()
 
+KNOWLEDGE_WEB_CONTEXT_ADDENDUM = """
+When the provided context blocks are labeled as web search citations, they summarize live web sources.
+Use those excerpts as the sole factual basis; sources may include government, news, banks, regulators, etc.
+Do not claim information is absent if it appears in those excerpts.
+Answer about the user's question directly from the excerpts — not only InfinitePay-site content.
+""".strip()
+
