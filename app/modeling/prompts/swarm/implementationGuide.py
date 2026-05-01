@@ -5,94 +5,98 @@ import re
 from app.domain.conversationContextMarkers import FULL_CURRENT_USER_MESSAGE_LEADER
 
 _SECTION_OVERVIEW = """\
-**Visão geral do swarm**
-Cada mensagem HTTP passa pelo caso de uso de mensagens: opcionalmente guardrails de entrada, roteador LLM (JSON com `route` e `rationale`), despacho para um agente ou resposta estática do roteador em modo degradado, opcionalmente guardrails de saída, persistência do turno (pedido, resposta, rota, `traceId`) e envelope com `status`, `reply`, `traceId`, e quando aplicável `route`, `routerModel`, `agentModel`, `replySource`.
-Rotas implementadas: `knowledge` (conhecimento de produto e contexto recuperado), `support` (conta e ferramentas de sessão), `swarm` (este guia sobre o próprio sistema)."""
+Imagina um desenho em caixas: do lado do utilizador entra um pedido; antes de tudo pode passar por um filtro de segurança (opcional). Depois há uma caixa “decisor” que olha para a mensagem e escolhe um caminho: perguntas de produto e contexto, ajuda com a tua sessão e dados, ou esta conversa sobre o próprio assistente. A seguir, o caminho escolhido leva a um bloco que produz a resposta; outro filtro opcional revê a resposta; no fim o sistema regista o que aconteceu e devolve a resposta ao cliente. São três saídas principais desse decisor: conhecimento de produto, suporte à conta e esta rota de autoexplicação."""
 
 _SECTION_ROUTING = """\
-**Roteamento**
-O roteador é um modelo de chat configurável via ambiente (`ROUTER_MODEL`). Devolve JSON estrito: `route` ∈ {`knowledge`, `support`, `swarm`} e `rationale`. Se o JSON for inválido ou a rota for desconhecida, o sistema cai em modo degradado com rota `knowledge` e mensagem estática. O valor legado `fallback` no JSON é tratado como `knowledge`. Quando o roteador preenche `reply` (degradado), essa resposta é usada diretamente sem chamar agente."""
+O decisor é, na prática, um modelo que classifica o pedido e diz qual dos três caminhos deve abrir. A aplicação espera uma resposta num formato bem definido para saber para onde encaminhar; se isso correr mal, há um plano B: uma resposta fixa e segura, sem passar pelos blocos normais. Em situações de rutura o sistema pode também devolver texto já preparado pelo próprio decisor, sem chamar o bloco seguinte."""
 
 _SECTION_KNOWLEDGE = """\
-**Agente de conhecimento (`knowledge`)**
-- **Recuperação (RAG):** consulta vetorial à base (pgvector) com limite configurável de trechos e limiar de relevância; respostas devem fundamentar-se nos trechos (e opcionalmente em busca na web quando configurada).
-- **Ingestão por URL:** se a intenção detectada for adicionar URL e houver link na mensagem, chama a ferramenta de ingestão (crawl, chunk, embed, armazenamento) e devolve confirmação com identificadores da execução.
-- **Busca web (opcional):** quando o adaptador de busca está presente, pode haver fallback por relevância RAG insuficiente; há limiar mais alto de score RAG quando a web está ativa; o fluxo pode repetir busca se o formatador sinalizar contexto insuficiente.
-- **Resposta:** pode incluir sufixo com fontes quando há URLs válidas nos trechos; não emite bloco de fontes só com placeholders vazios."""
+O caminho de conhecimento liga-se a uma memória de textos (material de apoio) e tenta responder com base no que encontrou lá, em vez de inventar. Se pedires para acrescentar uma página por link, há um pipeline que trata disso por ti. Por vezes, se estiver ligado, pode ainda ir buscar informação complementar fora dessa memória. Quando faz sentido, a resposta pode indicar de onde veio a informação."""
 
 _SECTION_SUPPORT = """\
-**Agente de suporte (`support`)**
-- **Contexto:** operações aplicam-se ao dono da conversa (`guest:<userId>` ou `google:<subject>` do token), injetado pelo servidor — o modelo não deve colocar chaves de proprietário nos payloads.
-- **Entrada do modelo:** prompt de sistema + contrato JSON + bloco **PERFIL_ATUAL** (snapshot de nome exibido e `profile_metadata` lidos da persistência) quando esta existe.
-- **Ferramentas (array `operations`):**
-  - `noop`: sem alteração.
-  - `profile_patch`: mescla `display_name` e/ou `profile_metadata` (objeto chave-valor); chaves desconhecidas extras no payload de perfil são ignoradas pelo executor conforme regras de sanitização.
-  - `delete_turns`: `scope` = `all` | `by_trace_ids` | `by_turn_ids` com listas correspondentes; remove turnos apenas do dono atual.
-- **Saída:** o executor aplica operações; a resposta ao utilizador inclui o texto do assistente e um bloco **confirmado** com o perfil após gravar, quando a persistência está ativa. Perfil vazio: o prompt obriga a orientar que dados podem ser enviados (nome + metadados) sem o utilizador pedir lista explícita."""
+O caminho de suporte trata do que é teu nesta conversa: quem és (convidado ou com sessão Google), o que já ficou guardado e pedidos como atualizar dados visíveis ou limpar histórico. O modelo combina uma resposta em linguagem natural com “pedidos de ação” que o servidor executa só para ti — por exemplo ajustar nome ou metadados do perfil, ou apagar mensagens guardadas conforme o âmbito que definires. O servidor aplica; o utilizador não manda chaves internas de identidade nos pedidos."""
 
 _SECTION_SWARM = """\
-**Agente de conhecimento do swarm (`swarm`) — esta rota**
-Responde apenas com informação alinhada à implementação atual: arquitetura lógica, roteamento, agentes, ferramentas, guardrails, identidade e API. Não substitui o agente de conhecimento sobre produtos InfinitePay nem o suporte operacional da conta."""
+Esta terceira saída sou eu a explicar o desenho do sistema: caixas, fluxos e regras gerais. Não substituo respostas sobre produtos da InfinitePay nem faço alterações na tua conta; para isso existem os outros dois caminhos."""
 
 _SECTION_GUARDRAILS = """\
-**Guardrails (opcional)**
-Modo configurável por ambiente: pode estar desligado, em regras (bloqueio ou truncagem de entrada, bloqueio de saída por substrings) ou no-op. Avaliam a mensagem contextual (incluindo histórico do dia quando existir) e a resposta final; bloqueio de entrada fixa rota registrada como conhecimento com racional de guardrail."""
+Os filtros de segurança são uma camada opcional por cima do fluxo: podem estar desligados, ativos com regras simples ou neutros. Olham para o que chega e para o que sai; se bloquearem à entrada, o episódio fica registado de forma especial para auditoria. Podem usar o histórico recente da conversa quando existe."""
 
 _SECTION_IDENTITY = """\
-**Identidade e histórico**
-- **Convidado:** chave de conversa `guest:<userId>` do corpo da API.
-- **Google:** com token válido, chave `google:<subject>` e ligação a utilizador na persistência; exige verificador de token e base de sessão configurados.
-- **Contexto do dia:** antes de rotear, podem ser carregados turnos do mesmo dono no dia (limite configurável) e antepostos ao pedido atual com marcador explícito da mensagem corrente.
-- **Histórico via API:** pedido autenticado igual ao de mensagem permite listar turnos do dia (`POST` dedicado no mesmo padrão de identidade)."""
+Quem és determina a “gaveta” da conversa: convidado com identificador próprio, ou utilizador Google quando o token é válido e a sessão está configurada. O sistema pode carregar o que já foi dito hoje na mesma gaveta antes de decidir o caminho. Há também uma forma de listar, pelo mesmo critério de dono, o que ficou guardado no dia."""
 
 _SECTION_API = """\
-**API relevante**
-- `GET /health` — estado do serviço.
-- `POST /messages` — corpo: `message`, `userId`, `googleIdToken` opcional; resposta: envelope com `reply`, `traceId`, `status`, campos opcionais de rota e modelos.
-- `POST /messages/history` — mesmo critério de dono da conversa; devolve lista cronológica de turnos persistidos do dia."""
+Por fora há três portas simples: uma para ver se o serviço está de pé, outra para enviar a mensagem e receber a resposta completa, e outra para pedir o histórico do dia para quem é dono daquela conversa. O critério de “dono” é o mesmo nas duas últimas."""
 
-_BRIEF_INTRO = """\
-Sou o guia interno deste assistente: explico como ele está montado (rotas, agentes, ferramentas), com base no que está implementado — não substituo respostas sobre produtos da InfinitePay nem operações na tua conta.
+_SHORT_INTRO = """\
+Sou o guia deste assistente: explico o desenho geral — como as peças se ligam — sem entrar em produtos InfinitePay nem em operações na tua conta.
 
-Em resumo: um roteador encaminha o pedido para **conhecimento** (RAG e, se existir, reforço na web), para **suporte** (perfil e histórico na sessão com ferramentas estruturadas) ou para **esta conversa** quando o assunto é o próprio sistema."""
+Numa imagem rápida: o teu pedido entra, um roteador interno escolhe um de três caminhos (conhecimento de produto, suporte à sessão, ou falar comigo sobre o próprio sistema), e no fim recebes a resposta já revista e registada."""
 
 _MENU_HINT = """\
-Se quiseres ir ao ponto, pergunta por um destes temas — começo curto e aprofundo só se pedires detalhe técnico: **roteamento**, **agente de conhecimento** (RAG, URLs, web), **suporte** (perfil, apagar turnos), **guardrails**, **identidade** (convidado/Google, histórico) ou **API** (mensagens, histórico do dia)."""
+Se quiseres ir por partes, diz o tema (encaminhamento, conhecimento, suporte, filtros de segurança, identidade, portas da API). Para a versão mais explícita com nomes técnicos e contratos, pede “detalhe técnico” ou “aprofundar”."""
+
+_SUMMARY_TAIL = """\
+Se precisares da versão mais explícita (nomes de campos, formatos, configuração), diz que queres detalhe técnico ou pergunta só por um tema."""
+
+_COMPACT: dict[str, str] = {
+    "overview": (
+        "O fluxo é: entrada → filtro opcional → decisor que abre um de três caminhos (produto, sessão ou este guia) → "
+        "resposta → filtro opcional → registo e resposta ao cliente. Três saídas principais do decisor."
+    ),
+    "routing": (
+        "O roteador classifica o pedido e indica qual dos três caminhos seguir; a aplicação lê essa decisão num formato "
+        "fixo. Se algo falhar, há resposta de recurso sem passar pelos blocos normais."
+    ),
+    "knowledge": (
+        "Liga à memória de apoio, responde com base no que encontrou, pode ingerir um link que indiques e, se existir, "
+        "reforçar com fontes externas. Pode citar origens quando faz sentido."
+    ),
+    "support": (
+        "Cuida da tua sessão: o modelo responde e pede ações que o servidor aplica só para ti — perfil, metadados, "
+        "apagar histórico guardado por âmbitos. O servidor impõe o dono da conversa."
+    ),
+    "swarm": (
+        "Este caminho explica o desenho do sistema. Não é produto InfinitePay nem alterações na conta."
+    ),
+    "guardrails": (
+        "Camada opcional antes e depois: regras ou truncagem, pode usar o histórico do dia. Entrada bloqueada fica "
+        "marcada de forma especial."
+    ),
+    "identity": (
+        "Convidado ou Google definem a gaveta da conversa; pode juntar-se o histórico de hoje antes de decidir. "
+        "Há pedido para listar o dia com o mesmo critério de dono."
+    ),
+    "api": (
+        "Três contactos: saúde do serviço, enviar mensagem com resposta completa, listar histórico do dia para o mesmo dono."
+    ),
+}
 
 _TEASERS: dict[str, str] = {
     "overview": (
-        "Há três rotas principais: uma trata de informação de produto com recuperação de contexto; "
-        "outra trata da tua sessão e dados guardados com ferramentas; "
-        "esta rota explica o funcionamento do stack quando perguntas por ele."
+        "Três grandes ramos depois do decisor: produto com memória de apoio, sessão e dados teus, "
+        "e este guia sobre o próprio desenho."
     ),
     "routing": (
-        "O roteador é um modelo que classifica cada mensagem e devolve uma rota em JSON. "
-        "Se a classificação falhar, há um modo degradado com mensagem fixa, sem chamar os outros agentes."
+        "O decisor encaixa cada pedido num dos caminhos; se a leitura falhar, o sistema responde por um atalho seguro."
     ),
     "knowledge": (
-        "O agente de conhecimento procura trechos relevantes numa base vetorial, pode ingerir uma URL que indiques "
-        "e, quando configurado, recorre à web se a recuperação local for fraca. "
-        "A ideia é responder com base em fontes, não inventar factos."
+        "Usa material guardado para fundamentar a resposta, pode absorver um link novo e, por vezes, reforçar com fonte externa."
     ),
     "support": (
-        "O agente de suporte responde em JSON com operações que o servidor aplica só ao dono da conversa: "
-        "por exemplo atualizar nome e metadados de perfil ou apagar turnos guardados, conforme o pedido."
+        "Mistura resposta em texto com pedidos que o servidor executa só para o dono da conversa — perfil, metadados, limpar histórico."
     ),
     "swarm": (
-        "A rota em que estás agora existe para perguntas sobre o próprio assistente — rotas, ferramentas e políticas — "
-        "e não para dúvidas comerciais nem para alterar a tua conta."
+        "O ramo em que estás serve para entender o diagrama; não vende produto nem mexe na tua conta."
     ),
     "guardrails": (
-        "Opcionalmente, há filtros na entrada e na saída (regras ou truncagem), configuráveis por ambiente; "
-        "se bloquearem a entrada, o turno fica registado como conhecimento com motivo de política."
+        "Filtros opcionais na ida e na volta; se barrarem à entrada, fica rasto para revisão."
     ),
     "identity": (
-        "Identificas-te com um `userId` de convidado ou com token Google; isso define a chave da conversa e o que é carregado "
-        "do histórico do dia antes de responder."
+        "Convidado ou Google definem a tua “gaveta”; o dia pode ser relembrado antes de decidir o caminho."
     ),
     "api": (
-        "Há um endpoint de saúde, um para enviar mensagens com envelope de resposta e outro para listar turnos do dia, "
-        "sempre com o mesmo critério de dono da conversa."
+        "Três contactos: saúde, mensagem com resposta, histórico do dia — sempre com o mesmo dono de conversa."
     ),
 }
 
@@ -130,14 +134,20 @@ _SECTIONS: dict[str, str] = {
 
 _MAX_REPLY_CHARS = 14_000
 _MAX_FULL_SECTIONS = 5
-_MAX_TEASER_TOPICS = 4
+_MAX_SUMMARY_TOPICS = 5
 
 _DETAIL_HINTS = re.compile(
-    r"\b(detalh|específic|especific|complet[oa]|técnico|tecnico|profund|"
-    r"lista\s+completa|passo\s+a\s+passo|exatamente|mostre\s+tudo|"
-    r"documenta(çc)?(ãa|a)o|especifica(çc)?(ãa|a)o|json|payload|schema|"
-    r"tudo\s+sobre|explica(\s+em)?\s+detalhe)\b",
+    r"\b(detalh|específic|especific|complet[oa]|técnico|tecnico|profund|aprofund|"
+    r"elabore|elabora|expand\w*|mais\s+sobre|lista\s+completa|passo\s+a\s+passo|exatamente|mostre\s+tudo|"
+    r"documenta(çc)?(ãa|a)o|especifica(çc)?(ãa|a)o|tudo\s+sobre|explica(\s+em)?\s+detalhe)\b",
     re.IGNORECASE,
+)
+
+_FOCUSED_QUESTION = re.compile(
+    r"[?]|\A.{1,220}\Z|"
+    r"\b(qual|quais|o\s+que|como|quando|onde|por\s+que|porquê|explic\w*|diz\w*|mostr\w*|"
+    r"defin\w*|descrev\w*|o\s+que\s+é|funcion\w*|devolv\w+|retorn\w+)\b",
+    re.IGNORECASE | re.DOTALL,
 )
 
 _GREETING_ONLY = re.compile(
@@ -178,41 +188,70 @@ def _pickTopics(haystack: str) -> list[str]:
     return ordered
 
 
+def _wantsTechnicalDetail(text: str) -> bool:
+    return bool(_DETAIL_HINTS.search(text))
+
+
+def _isFocusedQuestion(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return False
+    return bool(_FOCUSED_QUESTION.search(stripped))
+
+
+def _firstSummarySentence(compact: str) -> str:
+    parts = compact.split(". ", maxsplit=1)
+    if len(parts) == 1:
+        return compact if compact.endswith(".") else f"{compact}."
+    return f"{parts[0]}."
+
+
+def _composeSummary(topics: list[str]) -> str:
+    lines: list[str] = []
+    for t in topics[:_MAX_SUMMARY_TOPICS]:
+        body = _COMPACT.get(t) or _TEASERS.get(t, "")
+        if body:
+            lines.append(_firstSummarySentence(body))
+    if not lines:
+        return f"{_SHORT_INTRO}\n\n{_MENU_HINT}"
+    extra = ""
+    if len(topics) > _MAX_SUMMARY_TOPICS:
+        extra = f"\n(Há mais {len(topics) - _MAX_SUMMARY_TOPICS} tema(s) — pergunta por um ou pede detalhe técnico.)"
+    bullets = "\n".join(f"• {line}" for line in lines)
+    return f"Resumo:\n{bullets}\n\n{_SUMMARY_TAIL}{extra}"
+
+
+def _composeFullSections(topics: list[str]) -> str:
+    parts = [_SECTIONS[t] for t in topics[:_MAX_FULL_SECTIONS] if t in _SECTIONS]
+    body = "\n\n".join(parts)
+    if len(body) > _MAX_REPLY_CHARS:
+        body = body[:_MAX_REPLY_CHARS].rstrip() + "\n\n[Podes pedir o restante por tema.]"
+    return body
+
+
 def composeSwarmGuideReply(contextualMessage: str) -> str:
     text = _currentUserSlice(contextualMessage)
     haystack = text.casefold()
     if not haystack:
-        return f"{_BRIEF_INTRO}\n\n{_MENU_HINT}"
+        return f"{_SHORT_INTRO}\n\n{_MENU_HINT}"
 
     if _GREETING_ONLY.match(text.strip()):
-        return f"{_BRIEF_INTRO}\n\n{_MENU_HINT}"
+        return f"{_SHORT_INTRO}\n\n{_MENU_HINT}"
 
     topics = _pickTopics(haystack)
-    wants_detail = bool(_DETAIL_HINTS.search(text))
+    wants_detail = _wantsTechnicalDetail(text)
 
     if not topics:
-        return f"{_BRIEF_INTRO}\n\n{_MENU_HINT}"
+        return f"{_SHORT_INTRO}\n\n{_MENU_HINT}"
 
     if wants_detail:
-        parts = [_SECTIONS[t] for t in topics[:_MAX_FULL_SECTIONS] if t in _SECTIONS]
-        body = "\n\n".join(parts)
-        if len(body) > _MAX_REPLY_CHARS:
-            body = body[:_MAX_REPLY_CHARS].rstrip() + "\n\n[Podes pedir o restante por tema.] "
-        return body
+        return _composeFullSections(topics)
 
-    teasers = [_TEASERS[t] for t in topics[:_MAX_TEASER_TOPICS] if t in _TEASERS]
-    if not teasers:
-        return f"{_BRIEF_INTRO}\n\n{_MENU_HINT}"
+    if len(topics) == 1 and _isFocusedQuestion(text):
+        topic = topics[0]
+        block = _COMPACT.get(topic) or _TEASERS.get(topic, "")
+        if not block:
+            return f"{_SHORT_INTRO}\n\n{_MENU_HINT}"
+        return f"{block}\n\n{_SUMMARY_TAIL}"
 
-    bridge = (
-        "Sobre o que perguntaste, em linhas gerais:"
-        if len(teasers) > 1
-        else "Sobre isso, em linhas gerais:"
-    )
-    blocks = [bridge, "\n\n".join(teasers), _MENU_HINT]
-    if len(topics) > _MAX_TEASER_TOPICS:
-        blocks.insert(
-            -1,
-            f"(Há mais {len(topics) - _MAX_TEASER_TOPICS} tema(s) relacionados — pergunta por um de cada vez ou pede **detalhe técnico**.)",
-        )
-    return f"{_BRIEF_INTRO}\n\n" + "\n\n".join(blocks)
+    return _composeSummary(topics)
