@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
 
+from app.adapters.outbound.guardrails import NoOpGuardrailsAdapter
 from app.application.usecase import MessageUseCase
 from app.domain.models import (
     ConversationProfileSnapshot,
@@ -49,6 +50,7 @@ def test_health_retorna_ok():
         knowledgeAgent=_EchoKnowledge(),
         supportAgent=_EchoSupport(),
         swarmKnowledgeAgent=_EchoSwarm(),
+        messageGuardrails=NoOpGuardrailsAdapter(),
         routerModel=_FixedRouteRouter("knowledge"),
     )
     client = _make_client(use_case)
@@ -62,6 +64,7 @@ def test_post_messages_200_com_envelope_obrigatorio():
         knowledgeAgent=_EchoKnowledge(),
         supportAgent=_EchoSupport(),
         swarmKnowledgeAgent=_EchoSwarm(),
+        messageGuardrails=NoOpGuardrailsAdapter(),
         routerModel=_FixedRouteRouter("knowledge"),
     )
     client = _make_client(use_case)
@@ -81,6 +84,7 @@ def test_post_messages_suporte_quando_rota_support():
         knowledgeAgent=_EchoKnowledge(),
         supportAgent=_EchoSupport(),
         swarmKnowledgeAgent=_EchoSwarm(),
+        messageGuardrails=NoOpGuardrailsAdapter(),
         routerModel=_FixedRouteRouter("support"),
     )
     client = _make_client(use_case)
@@ -98,6 +102,7 @@ def test_post_messages_swarm_quando_rota_swarm():
         knowledgeAgent=_EchoKnowledge(),
         supportAgent=_EchoSupport(),
         swarmKnowledgeAgent=_EchoSwarm(),
+        messageGuardrails=NoOpGuardrailsAdapter(),
         routerModel=_FixedRouteRouter("swarm"),
         swarmKnowledgeLabel="test-swarm-label",
     )
@@ -119,6 +124,7 @@ def test_post_messages_payload_vazio_retorna_422():
         knowledgeAgent=_EchoKnowledge(),
         supportAgent=_EchoSupport(),
         swarmKnowledgeAgent=_EchoSwarm(),
+        messageGuardrails=NoOpGuardrailsAdapter(),
         routerModel=_FixedRouteRouter("knowledge"),
     )
     client = _make_client(use_case)
@@ -166,6 +172,7 @@ def test_post_messages_history_sem_persistencia_retorna_lista_vazia():
         knowledgeAgent=_EchoKnowledge(),
         supportAgent=_EchoSupport(),
         swarmKnowledgeAgent=_EchoSwarm(),
+        messageGuardrails=NoOpGuardrailsAdapter(),
         routerModel=_FixedRouteRouter("knowledge"),
     )
     client = _make_client(use_case)
@@ -193,6 +200,7 @@ def test_post_messages_history_convidado_retorna_turnos():
         knowledgeAgent=_EchoKnowledge(),
         supportAgent=_EchoSupport(),
         swarmKnowledgeAgent=_EchoSwarm(),
+        messageGuardrails=NoOpGuardrailsAdapter(),
         routerModel=_FixedRouteRouter("knowledge"),
         userMessagePersistence=persistence,
     )
@@ -229,6 +237,7 @@ def test_post_messages_history_google_escopo_correto():
         knowledgeAgent=_EchoKnowledge(),
         supportAgent=_EchoSupport(),
         swarmKnowledgeAgent=_EchoSwarm(),
+        messageGuardrails=NoOpGuardrailsAdapter(),
         routerModel=_FixedRouteRouter("knowledge"),
         googleTokenVerifier=_ContractGoogleVerifier(),
         userMessagePersistence=persistence,
@@ -248,6 +257,7 @@ def test_post_messages_history_google_token_invalido_401():
         knowledgeAgent=_EchoKnowledge(),
         supportAgent=_EchoSupport(),
         swarmKnowledgeAgent=_EchoSwarm(),
+        messageGuardrails=NoOpGuardrailsAdapter(),
         routerModel=_FixedRouteRouter("knowledge"),
         googleTokenVerifier=_ContractGoogleVerifier(),
         userMessagePersistence=persistence,

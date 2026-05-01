@@ -4,6 +4,7 @@ import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
+from app.adapters.outbound.guardrails import NoOpGuardrailsAdapter
 from app.adapters.outbound.postgres.userMessagePersistenceAdapter import UserMessagePersistenceAdapter
 from app.application.usecase import MessageUseCase
 from app.domain.models import GoogleIdentity, RouterDecision
@@ -71,6 +72,7 @@ def testGoogleAuthenticatedMessagesPersistAndLoadDailyContext():
         knowledgeAgent=UnreachableKnowledgeAgent(),
         supportAgent=agent,
         swarmKnowledgeAgent=UnreachableSwarmAgent(),
+        messageGuardrails=NoOpGuardrailsAdapter(),
         routerModel=ForcedSupportRouter(),
         googleTokenVerifier=StubGoogleTokenVerifier(),
         userMessagePersistence=UserMessagePersistenceAdapter(databaseUrl=databaseUrl),
@@ -125,6 +127,7 @@ def testGuestMessagesPersistWithoutGoogleToken():
         knowledgeAgent=UnreachableKnowledgeAgent(),
         supportAgent=InspectingAgent(),
         swarmKnowledgeAgent=UnreachableSwarmAgent(),
+        messageGuardrails=NoOpGuardrailsAdapter(),
         routerModel=ForcedSupportRouter(),
         userMessagePersistence=UserMessagePersistenceAdapter(databaseUrl=databaseUrl),
     )
@@ -152,6 +155,7 @@ def testMessagesRejectInvalidGoogleToken():
         knowledgeAgent=UnreachableKnowledgeAgent(),
         supportAgent=InspectingAgent(),
         swarmKnowledgeAgent=UnreachableSwarmAgent(),
+        messageGuardrails=NoOpGuardrailsAdapter(),
         routerModel=ForcedSupportRouter(),
         googleTokenVerifier=StubGoogleTokenVerifier(),
         userMessagePersistence=UserMessagePersistenceAdapter(

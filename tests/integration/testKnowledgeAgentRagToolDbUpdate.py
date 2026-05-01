@@ -7,6 +7,7 @@ import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
+from app.adapters.outbound.guardrails import NoOpGuardrailsAdapter
 from app.adapters.outbound.postgres import KnowledgeIngestionToolAdapter
 from app.application.agents import KnowledgeAgent
 from app.application.usecase import MessageUseCase
@@ -60,6 +61,7 @@ def testKnowledgeAgentAddUrlUpdatesRagDatabase():
         ),
         supportAgent=UnusedRouteAgent(),
         swarmKnowledgeAgent=UnusedRouteAgent(),
+        messageGuardrails=NoOpGuardrailsAdapter(),
         routerModel=StubKnowledgeRouter(),
     )
     app = createApp(messageUseCase=useCase)

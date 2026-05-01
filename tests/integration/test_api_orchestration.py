@@ -4,6 +4,7 @@ import uuid
 
 from fastapi.testclient import TestClient
 
+from app.adapters.outbound.guardrails import NoOpGuardrailsAdapter
 from app.application.usecase import MessageUseCase
 from app.domain.models import RouterDecision
 from app.main import createApp
@@ -41,6 +42,7 @@ def test_mensagens_usa_reply_estatico_do_roteador_sem_agente():
         knowledgeAgent=_NaoChamarConhecimento(),
         supportAgent=_EcoSuporteOrchestration(),
         swarmKnowledgeAgent=_EcoSwarmOrchestration(),
+        messageGuardrails=NoOpGuardrailsAdapter(),
         routerModel=_StaticDegradedRouter(),
     )
     client = TestClient(createApp(messageUseCase=use_case))
@@ -78,6 +80,7 @@ def test_mensagens_encaminha_contexto_ao_roteador():
         knowledgeAgent=_EcoAgente(),
         supportAgent=_EcoSuporteOrchestration(),
         swarmKnowledgeAgent=_EcoSwarmOrchestration(),
+        messageGuardrails=NoOpGuardrailsAdapter(),
         routerModel=router,
     )
     client = TestClient(createApp(messageUseCase=use_case))

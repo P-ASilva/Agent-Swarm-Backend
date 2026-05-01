@@ -10,6 +10,7 @@ docker compose up -d postgres
 $script = @'
 from fastapi.testclient import TestClient
 
+from app.adapters.outbound.guardrails import NoOpGuardrailsAdapter
 from app.adapters.outbound.postgres import KnowledgeIngestionToolAdapter, PgvectorKnowledgeRetriever
 from app.application.agents import KnowledgeAgent
 from app.application.usecase import MessageUseCase
@@ -45,6 +46,7 @@ app = createApp(
         knowledgeAgent=knowledge_agent,
         supportAgent=UnusedRouteAgent(),
         swarmKnowledgeAgent=UnusedRouteAgent(),
+        messageGuardrails=NoOpGuardrailsAdapter(),
         routerModel=ForcedKnowledgeRouter(),
     )
 )
