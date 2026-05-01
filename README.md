@@ -18,10 +18,8 @@ flowchart TD
 
   K --> RET[PgvectorKnowledgeRetriever]
   K --> ING[KnowledgeIngestionToolAdapter]
-  K --> KCHAT[OpenAiChatAdapter]
   K --> WEB[OpenAiWebSearchAdapter]
 
-  S --> SCHAT[OpenAiChatAdapter]
   S --> EX["SupportOperationsExecutor profile_patch delete_turns noop"]
 
   SW --> SWP["Guia determinístico modeling/prompts/swarm"]
@@ -31,7 +29,7 @@ flowchart TD
 
   EX --> PERM[UserMessagePersistenceAdapter]
 
-  K --> GRout["Guardrails saída MessageGuardrailsPort<br/>vazamento + listas rules"]
+  K --> GRout["Guardrails"]
   S --> GRout
   SW --> GRout
 
