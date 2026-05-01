@@ -1,4 +1,10 @@
 
+/chore guia swarm: texto conversacional, sem cabeçalhos em negrito nas secções; linguagem de “diagrama” (caixas, caminhos, filtros) e menos jargão; detalhe técnico continua a expandir o texto, agora em prosa contínua.
+
+/feat guia swarm (`implementationGuide`): resposta por defeito em **resumo** (tópicos em bullets curtos); pergunta **focalizada** num tema → texto **compacto** sem cabeçalhos longos; **detalhe técnico** / **aprofundar** / **elabora** → blocos completos como antes.
+
+/chore `MessageUseCase` exige sempre `knowledgeAgent`, `supportAgent` e `swarmKnowledgeAgent` injetados; removidos `KnowledgeAgentMock`, `SupportAgentMock` e `SwarmKnowledgeAgentMock` da camada `application`. Testes e smokes usam stubs locais.
+
 /fix guia swarm (`implementationGuide`): tópico **roteamento** reconhece também "roteamento" (prefixo `roteament`), para respostas em detalhe técnico não caírem só no menu quando o utilizador não diz "roteador".
 
 /fix roteamento: heurística antes do LLM em `RouterAgent` envia para `swarm` quando a mensagem atual cita **este/deste/neste AI-swarm** (e padrões semelhantes de arquitetura); prompt do roteador reforça prioridade de `swarm` vs definição genérica em `knowledge`.
