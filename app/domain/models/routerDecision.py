@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 
-RouteName = Literal["knowledge", "support", "fallback"]
+RouteName = Literal["knowledge", "support"]
 
 
 @dataclass(frozen=True)
@@ -13,3 +13,4 @@ class RouterDecision:
     rationale: str = ""
     usedModel: str | None = None
     degraded: bool = False
+    reply: str | None = None

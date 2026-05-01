@@ -8,6 +8,7 @@ from app.domain.ports.outbound.knowledgeRetrieverPort import KnowledgeRetrieverP
 from app.domain.ports.outbound.openAiChatPort import OpenAiChatPort
 from app.domain.ports.outbound.routerModelPort import RouterModelPort
 from app.domain.ports.outbound.userMessagePersistencePort import UserMessagePersistencePort
+from app.domain.ports.outbound.webSearchPort import WebSearchPort
 
 __all__ = [
     "AgentHandlerPort",
@@ -18,4 +19,5 @@ __all__ = [
     "OpenAiChatPort",
     "RouterModelPort",
     "UserMessagePersistencePort",
+    "WebSearchPort",
 ]

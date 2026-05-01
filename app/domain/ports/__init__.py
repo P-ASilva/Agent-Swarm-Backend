@@ -8,6 +8,7 @@ from app.domain.ports.outbound import (
     OpenAiChatPort,
     RouterModelPort,
     UserMessagePersistencePort,
+    WebSearchPort,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "OpenAiChatPort",
     "RouterModelPort",
     "UserMessagePersistencePort",
+    "WebSearchPort",
 ]
