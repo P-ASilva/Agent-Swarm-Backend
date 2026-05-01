@@ -26,10 +26,10 @@ class StubGoogleTokenVerifier:
         )
 
 
-class ForcedFallbackRouter:
+class ForcedSupportRouter:
     def decideRoute(self, message: str) -> RouterDecision:
         del message
-        return RouterDecision(route="fallback", rationale="forced")
+        return RouterDecision(route="support", rationale="forced")
 
 
 class InspectingAgent:
@@ -61,8 +61,8 @@ def testGoogleAuthenticatedMessagesPersistAndLoadDailyContext():
 
     agent = InspectingAgent()
     useCase = MessageUseCase(
-        routerModel=ForcedFallbackRouter(),
-        fallbackAgent=agent,
+        routerModel=ForcedSupportRouter(),
+        supportAgent=agent,
         googleTokenVerifier=StubGoogleTokenVerifier(),
         userMessagePersistence=UserMessagePersistenceAdapter(databaseUrl=databaseUrl),
     )
@@ -113,8 +113,8 @@ def testGuestMessagesPersistWithoutGoogleToken():
             cursor.execute("TRUNCATE TABLE user_message_turns, app_users CASCADE")
 
     useCase = MessageUseCase(
-        routerModel=ForcedFallbackRouter(),
-        fallbackAgent=InspectingAgent(),
+        routerModel=ForcedSupportRouter(),
+        supportAgent=InspectingAgent(),
         userMessagePersistence=UserMessagePersistenceAdapter(databaseUrl=databaseUrl),
     )
     client = TestClient(createApp(messageUseCase=useCase))
@@ -138,8 +138,8 @@ def testGuestMessagesPersistWithoutGoogleToken():
 @pytest.mark.integration
 def testMessagesRejectInvalidGoogleToken():
     useCase = MessageUseCase(
-        routerModel=ForcedFallbackRouter(),
-        fallbackAgent=InspectingAgent(),
+        routerModel=ForcedSupportRouter(),
+        supportAgent=InspectingAgent(),
         googleTokenVerifier=StubGoogleTokenVerifier(),
         userMessagePersistence=UserMessagePersistenceAdapter(
             databaseUrl=os.getenv(
