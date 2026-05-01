@@ -1,6 +1,6 @@
 # Agent Swarm Backend
 
-Backend **InfinitePay Agent Swarm** em arquitetura hexagonal (ports & adapters): um único endpoint de mensagens orquestra **roteamento**, **agente de conhecimento (RAG + busca web opcional)** e **agente de suporte (ferramentas sobre Postgres de sessão)**, com persistência de turnos, identidade Google opcional e **guardrails** configuráveis.
+Backend **InfinitePay Agent Swarm** em arquitetura hexagonal (ports & adapters): um único endpoint de mensagens orquestra **roteamento** (`knowledge` / `support` / `swarm`), **agente de conhecimento (RAG + OpenAI chat + busca web opcional)** e **agente de suporte (LLM + ferramentas sobre Postgres de sessão)**, com persistência de turnos, identidade Google opcional e **guardrails** obrigatórios na pipeline (políticas built-in + `GUARDRAILS_MODE=rules`).
 
 ## Visão da arquitetura
 
@@ -8,17 +8,35 @@ Backend **InfinitePay Agent Swarm** em arquitetura hexagonal (ports & adapters):
 flowchart TD
   Client[Cliente HTTP] --> API[FastAPI apiRouter]
   API --> UC[MessageUseCase]
-  UC --> GR[MessageGuardrailsPort opcional]
-  GR --> R[RouterAgent]
+
+  UC --> GRin["Guardrails entrada MessageGuardrailsPort<br/>RuleBasedGuardrailsAdapter: ill-intent + listas rules"]
+  GRin --> R[RouterAgent OpenAiChatAdapter]
+
   R -->|knowledge| K[KnowledgeAgent]
   R -->|support| S[SupportAgent]
+  R -->|swarm| SW[SwarmKnowledgeAgent]
+
   K --> RET[PgvectorKnowledgeRetriever]
   K --> ING[KnowledgeIngestionToolAdapter]
-  K --> WEB[OpenAiWebSearchAdapter opcional]
-  S --> EX[SupportOperationsExecutor]
-  EX --> PERM[UserMessagePersistenceAdapter]
-  UC --> PERM
+  K --> KCHAT[OpenAiChatAdapter]
+  K --> WEB[OpenAiWebSearchAdapter]
+
+  S --> SCHAT[OpenAiChatAdapter]
+  S --> EX["SupportOperationsExecutor profile_patch delete_turns noop"]
+
+  SW --> SWP["Guia determinístico modeling/prompts/swarm"]
+
   RET --> RAG[(Postgres pgvector)]
+  ING --> RAG
+
+  EX --> PERM[UserMessagePersistenceAdapter]
+
+  K --> GRout["Guardrails saída MessageGuardrailsPort<br/>vazamento + listas rules"]
+  S --> GRout
+  SW --> GRout
+
+  GRout --> PERM
+
   PERM --> SESS[(Postgres sessão)]
 ```
 
@@ -32,10 +50,10 @@ flowchart TD
 1. Validação do JSON (`message`, `userId`, `googleIdToken` opcional).
 2. Se houver token Google: verificação e chave de conversa `google:<subject>`; senão `guest:<userId>`.
 3. Carregamento do histórico do dia (mesma chave) e montagem do texto contextual (`Histórico…` + `Mensagem atual do usuário`).
-4. **Guardrails de entrada** (se `GUARDRAILS_MODE=rules`): bloqueio, truncagem ou seguir.
-5. **RouterAgent** → rota `knowledge` ou `support` (ou resposta estática se roteador degradado).
+4. **Guardrails de entrada** (sempre; `RuleBasedGuardrailsAdapter` em produção): padrões de má intenção (ex.: pedidos de chaves API), listas opcionais e truncagem quando `GUARDRAILS_MODE=rules`.
+5. **RouterAgent** → rota `knowledge`, `support` ou `swarm` (ou resposta estática se roteador degradado).
 6. Agente especializado; no suporte, `SupportOperationsExecutor` aplica `profile_patch` / `delete_turns` / `noop` no escopo da chave.
-7. **Guardrails de saída** (mesmo port, se configurado).
+7. **Guardrails de saída** (mesmo port): bloqueio de vazamento com formato de segredo quando aplicável; listas extras com `GUARDRAILS_MODE=rules`.
 8. Persistência do turno (`user_request`, `model_answer`, rota, `trace_id`, etc.).
 9. Resposta: `{ "status": "ok"|"degraded", "reply": "…", "traceId": "<uuid>" }`.
 
@@ -43,9 +61,10 @@ flowchart TD
 
 | Agente | Função |
 |--------|--------|
-| **RouterAgent** | Classifica a mensagem em `knowledge` ou `support` via LLM (JSON); em falha parsing/ modelo, degrada com resposta segura. |
-| **KnowledgeAgent** | RAG (pgvector), ingestão opcional por URL, resposta fundamentada; se configurado, **busca web** (OpenAI Responses API) quando RAG fraco ou sem trechos. |
-| **SupportAgent** | LLM em JSON (`assistant_reply` + `operations`): ferramentas **profile_patch**, **delete_turns** (escopos `all`, `by_trace_ids`, `by_turn_ids`), **noop**. Dados em `conversation_profiles` e `user_message_turns`. |
+| **RouterAgent** | Classifica em `knowledge`, `support` ou `swarm` via LLM (JSON); em falha de parsing/modelo, degrada com resposta segura. |
+| **KnowledgeAgent** | RAG (pgvector), ingestão opcional por URL, resposta fundamentada; **OpenAiChatAdapter**; **busca web** opcional (`OpenAiWebSearchAdapter` / `WEB_SEARCH_MODEL`) quando RAG fraco ou sem trechos. |
+| **SupportAgent** | LLM em JSON (`assistant_reply` + `operations`); **SupportOperationsExecutor** aplica **profile_patch**, **delete_turns** (`all`, `by_trace_ids`, `by_turn_ids`), **noop** em `conversation_profiles` / `user_message_turns`. |
+| **SwarmKnowledgeAgent** | Respostas do guia de implementação (roteamento, agentes, ferramentas, guardrails, API) via `modeling/prompts/swarm`; sem chamadas a modelo externo. |
 
 Comunicação entre agentes: **chamadas síncronas** no `MessageUseCase` (sem fila).
 
@@ -93,7 +112,7 @@ OpenAPI: `/docs`, `/redoc`.
 | `ROUTER_MODEL`, `KNOWLEDGE_MODEL`, `SUPPORT_MODEL`, `WEB_SEARCH_MODEL` | Modelos por etapa (defaults no código/Compose). |
 | `GOOGLE_CLIENT_ID` | Habilita verificação de `googleIdToken`. |
 | `EMBEDDING_PROVIDER` | `openai` ou `deterministic` (testes). |
-| `GUARDRAILS_MODE` | `off` ou `rules`; com `rules`, ver `GUARDRAILS_INPUT_BLOCK_SUBSTRINGS`, `GUARDRAILS_OUTPUT_BLOCK_SUBSTRINGS`, `GUARDRAILS_MAX_INPUT_CHARS`. |
+| `GUARDRAILS_MODE` | `rules` ativa listas e truncagem via `GUARDRAILS_INPUT_BLOCK_SUBSTRINGS`, `GUARDRAILS_OUTPUT_BLOCK_SUBSTRINGS`, `GUARDRAILS_MAX_INPUT_CHARS`; qualquer outro valor mantém só os padrões built-in de má intenção (entrada) e formato de segredo (saída). |
 
 Para integração local com DB de teste: `RAG_TEST_DATABASE_URL`, `SESSION_TEST_DATABASE_URL` (opcional; sessão pode usar default local — ver testes).
 

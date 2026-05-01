@@ -1,4 +1,8 @@
 
+/docs README: diagrama Mermaid com guardrails entrada/saída, rota `swarm`, ferramentas de conhecimento e suporte; tabela de agentes alinhada ao roteador.
+
+/feat guardrails obrigatórios no `MessageUseCase` (`messageGuardrails` sempre injetado); `RuleBasedGuardrailsAdapter` aplica sempre padrões de má intenção na entrada (pedidos de credenciais/chaves) e na saída (formatos típicos de vazamento); `GUARDRAILS_MODE=rules` continua a acrescentar listas env e truncagem. DI deixa de retornar `None`. Testes usam `NoOpGuardrailsAdapter` quando o caso não é políticas.
+
 /chore guia swarm: texto conversacional, sem cabeçalhos em negrito nas secções; linguagem de “diagrama” (caixas, caminhos, filtros) e menos jargão; detalhe técnico continua a expandir o texto, agora em prosa contínua.
 
 /feat guia swarm (`implementationGuide`): resposta por defeito em **resumo** (tópicos em bullets curtos); pergunta **focalizada** num tema → texto **compacto** sem cabeçalhos longos; **detalhe técnico** / **aprofundar** / **elabora** → blocos completos como antes.
