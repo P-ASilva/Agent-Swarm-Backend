@@ -18,11 +18,17 @@ class FetchedDocument:
     metadata: dict[str, str]
 
 
+_DEFAULT_BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
+
+
 @dataclass
 class WebContentLoader:
     timeoutSeconds: float = 20.0
     maxRetries: int = 2
-    userAgent: str = "agent-swarm-rag-ingestor/1.0"
+    userAgent: str = _DEFAULT_BROWSER_UA
 
     def load(self, sourceUrl: str) -> FetchedDocument:
         parsed = urlparse(sourceUrl)
@@ -31,7 +37,11 @@ class WebContentLoader:
         if parsed.scheme not in {"http", "https"}:
             raise ValueError(f"Unsupported URL scheme for ingestion: {sourceUrl}")
 
-        headers = {"User-Agent": self.userAgent}
+        headers = {
+            "User-Agent": self.userAgent,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+        }
         lastError: Exception | None = None
         for _ in range(self.maxRetries + 1):
             try:
@@ -57,7 +67,8 @@ class WebContentLoader:
                 lastError = exc
 
         assert lastError is not None
-        raise RuntimeError(f"Failed to fetch source URL: {sourceUrl}") from lastError
+        reason = f"{type(lastError).__name__}: {lastError}"
+        raise RuntimeError(f"Failed to fetch source URL: {sourceUrl} ({reason})") from lastError
 
     def loadMany(self, sourceUrls: list[str], maxPages: int | None = None) -> list[FetchedDocument]:
         capped = sourceUrls[:maxPages] if maxPages is not None else sourceUrls

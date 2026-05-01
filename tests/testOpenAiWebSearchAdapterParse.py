@@ -184,6 +184,31 @@ def test_knowledgeAgentSkipsWebWhenRagStrongEvenIfWebSearchConfigured():
     assert "from the web" not in reply
 
 
+def test_knowledgeAgentDedicatedWebSearchBypassesStrongRagWhenUserAsks():
+    agent = KnowledgeAgent(
+        retriever=_StrongRetriever(),
+        ingestionTool=_NoopIngestion(),
+        openAiChat=None,
+        webSearch=_FixedWebSearch(
+            [WebSearchResult(content="resultado da web dedicada", url="https://web.only", title="W", score=1.0)]
+        ),
+    )
+    reply = agent.handleMessage("Pesquise na web sobre taxa Selic atual")
+    assert "resultado da web dedicada" in reply
+    assert "strong rag snippet" not in reply
+
+
+def test_knowledgeAgentDedicatedWebFallsBackToRagWhenWebReturnsEmpty():
+    agent = KnowledgeAgent(
+        retriever=_StrongRetriever(),
+        ingestionTool=_NoopIngestion(),
+        openAiChat=None,
+        webSearch=_FixedWebSearch([]),
+    )
+    reply = agent.handleMessage("Busca na internet: algo que não vai retornar")
+    assert "strong rag snippet" in reply
+
+
 def test_knowledgeAgentEmptyRagAndEmptyWebReturnsPromptForUrl():
     agent = KnowledgeAgent(
         retriever=_EmptyRetriever(),

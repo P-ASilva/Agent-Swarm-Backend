@@ -14,6 +14,9 @@ except ModuleNotFoundError:  # pragma: no cover
 from app.domain.models import RouterDecision
 from app.domain.ports import OpenAiChatPort, RouterModelPort
 from app.modeling.prompts.router import ROUTER_SYSTEM_PROMPT, parseRouterDecision
+from app.modeling.prompts.router.knowledgeIngestionRouteHeuristic import (
+    heuristicShouldRouteKnowledgeIngestion,
+)
 from app.modeling.prompts.router.swarmRouteHeuristic import heuristicShouldRouteSwarm
 
 logger = logging.getLogger(__name__)
@@ -37,6 +40,15 @@ class RouterAgent(RouterModelPort):
             )
 
         logger.info("routing model=%s", routerModel)
+        if heuristicShouldRouteKnowledgeIngestion(message):
+            logger.info("routing heuristic route=knowledge (add-url / context ingestion)")
+            return RouterDecision(
+                route="knowledge",
+                rationale="heuristic:add-url-or-knowledge-context-update",
+                usedModel=routerModel,
+                degraded=False,
+                reply=None,
+            )
         if heuristicShouldRouteSwarm(message):
             logger.info("routing heuristic route=swarm (this-swarm / architecture question)")
             return RouterDecision(

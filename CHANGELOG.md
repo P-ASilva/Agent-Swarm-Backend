@@ -3,6 +3,12 @@
 
 /feat guardrails obrigatórios no `MessageUseCase` (`messageGuardrails` sempre injetado); `RuleBasedGuardrailsAdapter` aplica sempre padrões de má intenção na entrada (pedidos de credenciais/chaves) e na saída (formatos típicos de vazamento); `GUARDRAILS_MODE=rules` continua a acrescentar listas env e truncagem. DI deixa de retornar `None`. Testes usam `NoOpGuardrailsAdapter` quando o caso não é políticas.
 
+/fix ingestão RAG (`WebContentLoader`): User-Agent e cabeçalhos Accept próximos de navegador para reduzir bloqueios HTTP em páginas públicas; mensagem de `RuntimeError` no fetch inclui causa; resposta do KnowledgeAgent em falha de add-url inclui resumo do erro e log com stack.
+
+/fix roteador: heurística `heuristicShouldRouteKnowledgeIngestion` antes da heurística swarm — mensagens tipo “adicione URL ao contexto de conhecimento” vão para `knowledge` (ingestão), não para o guia `swarm`; prompt do roteador reforça a mesma prioridade.
+
+/feat KnowledgeAgent: pedidos explícitos de informação fora do contexto local ou de busca na web (ex.: “pesquise na web”, “fora da base”) usam primeiro `WebSearchPort` e só voltam ao RAG se a busca não devolver resultados.
+
 /chore guia swarm: texto conversacional, sem cabeçalhos em negrito nas secções; linguagem de “diagrama” (caixas, caminhos, filtros) e menos jargão; detalhe técnico continua a expandir o texto, agora em prosa contínua.
 
 /feat guia swarm (`implementationGuide`): resposta por defeito em **resumo** (tópicos em bullets curtos); pergunta **focalizada** num tema → texto **compacto** sem cabeçalhos longos; **detalhe técnico** / **aprofundar** / **elabora** → blocos completos como antes.

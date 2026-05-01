@@ -37,6 +37,38 @@ _ENVELOPE_INSUFFICIENCY_MARKERS = (
 URL_PATTERN = re.compile(r"(https?://[^\s]+|file://[^\s]+)", re.IGNORECASE)
 ADD_URL_HINTS = ("add", "ingest", "index", "adicione", "adicionar", "ingerir", "indexar")
 
+_DEDICATED_WEB_SEARCH_INTENT = re.compile(
+    r"|".join(
+        [
+            r"fora\s+do\s+contexto",
+            r"fora\s+da\s+base",
+            r"fora\s+do\s+material",
+            r"n[aã]o\s+(?:est[áa]|consta|vejo)\s+no\s+contexto",
+            r"n[aã]o\s+consta\s+na\s+base",
+            r"n[aã]o\s+tenho\s+isso\s+nos\s+trechos",
+            r"informa[cç][aã]o(?:s)?\s+fora\s+do\s+contexto",
+            r"informa[cç][aã]o\s+externa",
+            r"pesquis\w*\s+na\s+(?:web|internet)",
+            r"busc\w*\s+na\s+(?:web|internet)",
+            r"procur\w*\s+na\s+internet",
+            r"procur\w*\s+online",
+            r"outside\s+(?:of\s+)?(?:the\s+)?context",
+            r"search\s+(?:the\s+)?web",
+            r"look\s+this\s+up\s+online",
+        ]
+    ),
+    re.IGNORECASE,
+)
+
+_WEB_SEARCH_QUERY_PREFIX = re.compile(
+    r"^\s*(?:por\s+favor\s+)?(?:"
+    r"pesquis\w*\s+na\s+(?:web|internet)\s*(?:sobre|por)?\s*[:]?\s*|"
+    r"busc\w*\s+na\s+(?:web|internet)\s*(?:sobre|por)?\s*[:]?\s*|"
+    r"procur\w*\s+na\s+internet\s*(?:sobre|por)?\s*[:]?\s*"
+    r")\s*",
+    re.IGNORECASE,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -61,14 +93,47 @@ class KnowledgeAgent(AgentHandlerPort):
                     runLabel="knowledge-agent-add-url",
                 )
             except Exception as exc:
+                detail = str(exc).strip()
+                if len(detail) > 200:
+                    detail = f"{detail[:197]}..."
+                logger.warning(
+                    "addUrl failed url=%s type=%s",
+                    intent.url,
+                    type(exc).__name__,
+                    exc_info=True,
+                )
+                suffix = f" {detail}" if detail else ""
                 return (
                     "Falha ao atualizar o contexto de conhecimento. "
-                    f"[url={intent.url} erro={type(exc).__name__}]"
+                    f"[url={intent.url} erro={type(exc).__name__}{suffix}]"
                 )
             return (
                 "Contexto de conhecimento atualizado com sucesso. "
                 f"[url={intent.url} execução={result.runId} trechos={result.chunksWritten}]"
             )
+
+        bareForFlow = self._extractBareMessage(message)
+        if (
+            intent.kind == "answer"
+            and self.webSearch is not None
+            and self._messageRequestsDedicatedWebSearch(bareForFlow)
+        ):
+            query = self._queryTextForDedicatedWebSearch(bareForFlow)
+            logger.info("dedicated web search path queryLen=%d", len(query))
+            try:
+                webFirst = self.webSearch.search(query, maxResults=5)
+            except Exception:
+                webFirst = []
+            if webFirst:
+                synthetic = self._webResultsAsChunks(webFirst)
+                return self._answerFromRagChunks(
+                    message=message,
+                    chunks=synthetic,
+                    sourceLabel="web_search",
+                    contextIntro="Resultados de busca na web (citados)",
+                    webBackedContext=True,
+                )
+            logger.info("dedicated web search returned no results — falling back to RAG")
 
         logger.info("retrieval topK=%d", self.retrievalTopK)
         try:
@@ -295,6 +360,13 @@ class KnowledgeAgent(AgentHandlerPort):
         if idxLegacy != -1:
             return message[idxLegacy + len(legacy) :].strip()
         return message
+
+    def _messageRequestsDedicatedWebSearch(self, bareMessage: str) -> bool:
+        return bool(_DEDICATED_WEB_SEARCH_INTENT.search(bareMessage.strip()))
+
+    def _queryTextForDedicatedWebSearch(self, bareMessage: str) -> str:
+        stripped = _WEB_SEARCH_QUERY_PREFIX.sub("", bareMessage.strip()).strip()
+        return stripped if stripped else bareMessage.strip()
 
     def _parseIntent(self, message: str) -> KnowledgeIntent:
         parsed = self._parseStructuredIntent(message)
